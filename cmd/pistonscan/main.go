@@ -4,12 +4,15 @@ import (
 	"errors"
 	"fmt"
 	"os"
+
+	"pistonmaster.net/pistonscan/internal/gui"
 )
 
-const usage = `PistonScan - IP scanning toolkit (work in progress)
+const usage = `PistonScan - IP scanning toolkit
 
 Usage:
-  pistonscan open   Open the PistonScan interface.
+  pistonscan open   Launch the PistonScan interface.
+  pistonscan help   Show this help message.
 `
 
 func main() {
@@ -27,8 +30,11 @@ func run(args []string) error {
 
 	switch args[0] {
 	case "open":
-		fmt.Println("Opening PistonScan... (functionality coming soon)")
-		return nil
+		if os.Getenv("PISTONSCAN_HEADLESS") == "1" {
+			return nil
+		}
+		application := gui.New()
+		return application.Run()
 	case "help", "--help", "-h":
 		fmt.Print(usage)
 		return nil

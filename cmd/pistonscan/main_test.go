@@ -9,6 +9,7 @@ func TestRunWithoutArgsShowsUsage(t *testing.T) {
 }
 
 func TestRunOpenCommand(t *testing.T) {
+	t.Setenv("PISTONSCAN_HEADLESS", "1")
 	if err := run([]string{"open"}); err != nil {
 		t.Fatalf("run returned error for open command: %v", err)
 	}
