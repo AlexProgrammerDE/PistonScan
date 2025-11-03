@@ -1,0 +1,29 @@
+name: Go CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Verify formatting
+        run: |
+          gofmt -l . | tee /tmp/gofmt.txt
+          test ! -s /tmp/gofmt.txt
+
+      - name: Build
+        run: go build ./...
+
+      - name: Test
+        run: go test ./...
