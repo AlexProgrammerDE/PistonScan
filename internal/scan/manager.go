@@ -642,11 +642,19 @@ var (
 )
 
 func lookupHostnames(ctx context.Context, host string) []string {
-	lookupCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	// Use a resolver that prefers the cgo resolver, which reads /etc/hosts
+	// and uses the system's DNS configuration
+	resolver := &net.Resolver{
+		PreferGo: false,
+	}
+	
+	lookupCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	names, err := net.DefaultResolver.LookupAddr(lookupCtx, host)
+	names, err := resolver.LookupAddr(lookupCtx, host)
 	if err != nil {
+		// Don't log error, just return nil - DNS reverse lookups often fail
+		// in home/small office networks without proper PTR records
 		return nil
 	}
 	return uniqueStrings(names)
@@ -658,37 +666,80 @@ func lookupMDNS(ctx context.Context, host string) []string {
 		return nil
 	}
 
-	entries := make(chan *zeroconf.ServiceEntry)
+	entries := make(chan *zeroconf.ServiceEntry, 10)
 
-	ctx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
 	resultsMu := sync.Mutex{}
 	results := make(map[string]struct{})
 
+	// Collect results in background
+	done := make(chan struct{})
 	go func() {
+		defer close(done)
 		for entry := range entries {
+			// Check all IPv4 addresses for a match
 			for _, ipv4 := range entry.AddrIPv4 {
 				if ipv4.String() == host {
+					resultsMu.Lock()
 					if entry.Instance != "" {
-						resultsMu.Lock()
 						results[entry.Instance] = struct{}{}
-						resultsMu.Unlock()
 					}
 					if entry.HostName != "" {
-						resultsMu.Lock()
-						results[entry.HostName] = struct{}{}
-						resultsMu.Unlock()
+						// Clean up hostname (remove trailing dot)
+						hostname := strings.TrimSuffix(entry.HostName, ".")
+						if hostname != "" {
+							results[hostname] = struct{}{}
+						}
 					}
+					resultsMu.Unlock()
+				}
+			}
+			// Also check IPv6 addresses
+			for _, ipv6 := range entry.AddrIPv6 {
+				if ipv6.String() == host {
+					resultsMu.Lock()
+					if entry.Instance != "" {
+						results[entry.Instance] = struct{}{}
+					}
+					if entry.HostName != "" {
+						hostname := strings.TrimSuffix(entry.HostName, ".")
+						if hostname != "" {
+							results[hostname] = struct{}{}
+						}
+					}
+					resultsMu.Unlock()
 				}
 			}
 		}
 	}()
 
-	if err := resolver.Browse(ctx, "_services._dns-sd._udp", "local.", entries); err != nil {
-		return nil
+	// Browse for all service types to find devices
+	// This is a broader search that will find more devices
+	serviceTypes := []string{
+		"_services._dns-sd._udp",
+		"_workstation._tcp",
+		"_device-info._tcp",
+		"_http._tcp",
+		"_ssh._tcp",
+		"_smb._tcp",
 	}
+
+	for _, serviceType := range serviceTypes {
+		select {
+		case <-ctx.Done():
+			break
+		default:
+			// Browse for this service type, ignore errors
+			_ = resolver.Browse(ctx, serviceType, "local.", entries)
+		}
+	}
+
+	// Wait for context to expire
 	<-ctx.Done()
+	close(entries)
+	<-done
 
 	resultsMu.Lock()
 	defer resultsMu.Unlock()

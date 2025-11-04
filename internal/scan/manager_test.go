@@ -120,3 +120,52 @@ func TestPingHostLocalhost(t *testing.T) {
 		t.Fatalf("expected non-zero average latency")
 	}
 }
+
+func TestLookupHostnames(t *testing.T) {
+	// Test hostname lookup for localhost
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	hostnames := lookupHostnames(ctx, "127.0.0.1")
+
+	// localhost should resolve to "localhost" or similar
+	if len(hostnames) == 0 {
+		t.Fatalf("expected at least one hostname for 127.0.0.1, got none")
+	}
+
+	// Check if "localhost" is in the results
+	found := false
+	for _, name := range hostnames {
+		if strings.Contains(strings.ToLower(name), "localhost") {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		t.Fatalf("expected 'localhost' in hostnames, got %v", hostnames)
+	}
+}
+
+func TestUniqueStrings(t *testing.T) {
+	input := []string{"host1.local.", "host2.local.", "host1.local.", "host3.local."}
+	result := uniqueStrings(input)
+
+	if len(result) != 3 {
+		t.Fatalf("expected 3 unique strings, got %d: %v", len(result), result)
+	}
+
+	// Check that trailing dots are removed
+	for _, s := range result {
+		if strings.HasSuffix(s, ".") {
+			t.Fatalf("expected no trailing dots, got %s", s)
+		}
+	}
+
+	// Check that results are sorted
+	for i := 1; i < len(result); i++ {
+		if result[i-1] >= result[i] {
+			t.Fatalf("expected sorted results, got %v", result)
+		}
+	}
+}
