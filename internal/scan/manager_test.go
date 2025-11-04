@@ -404,3 +404,130 @@ func TestCollectHostDetailsRunsAllChecks(t *testing.T) {
 		result.DeviceName, result.OSGuess, len(result.Services))
 }
 
+func TestServiceInfoStructWithTLS(t *testing.T) {
+	svc := ServiceInfo{
+		Port:        443,
+		Protocol:    "tcp",
+		Service:     "HTTPS",
+		Banner:      "Server: nginx",
+		TLSCertInfo: "CN=example.com; Expires=2025-12-31",
+	}
+	
+	if svc.Port != 443 {
+		t.Errorf("expected port 443, got %d", svc.Port)
+	}
+	if svc.TLSCertInfo == "" {
+		t.Error("expected TLSCertInfo to be set")
+	}
+}
+
+func TestBuildSNMPGetRequest(t *testing.T) {
+	packet := buildSNMPGetRequest("public")
+	
+	if len(packet) < 10 {
+		t.Error("SNMP packet too short")
+	}
+	
+	// Check SEQUENCE tag
+	if packet[0] != 0x30 {
+		t.Errorf("expected SEQUENCE tag 0x30, got 0x%02x", packet[0])
+	}
+	
+	// Check that community string "public" is somewhere in the packet
+	packetStr := string(packet)
+	if !strings.Contains(packetStr, "public") {
+		t.Error("community string 'public' not found in packet")
+	}
+}
+
+func TestProbeUDPPort(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	
+	// Test with localhost on a port that's unlikely to be open
+	// This tests that the function doesn't crash and returns gracefully
+	result := probeUDPPort(ctx, "127.0.0.1", 9999)
+	
+	// We don't care if it's open or not, just that it doesn't crash
+	t.Logf("UDP probe result for port 9999: %v", result)
+}
+
+func TestScanUDPServices(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	
+	// Test with localhost on a small set of ports
+	services := scanUDPServices(ctx, "127.0.0.1", []int{53, 161})
+	
+	// Should return a list (possibly empty if no services are running)
+	t.Logf("Found %d UDP services", len(services))
+	
+	for _, svc := range services {
+		if svc.Protocol != "udp" {
+			t.Errorf("expected protocol 'udp', got '%s'", svc.Protocol)
+		}
+	}
+}
+
+func TestGetTLSCertInfo(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	
+	// Test with a well-known HTTPS site
+	info := getTLSCertInfo(ctx, "www.google.com", 443)
+	
+	// If we got info, it should contain some certificate details
+	if info != "" {
+		t.Logf("TLS cert info: %s", info)
+		// Check that it contains at least one expected field
+		hasExpectedField := strings.Contains(info, "CN=") || 
+			strings.Contains(info, "Expires=") || 
+			strings.Contains(info, "Issuer=")
+		if !hasExpectedField {
+			t.Errorf("TLS cert info doesn't contain expected fields: %s", info)
+		}
+	} else {
+		t.Log("No TLS cert info returned (might be network issue)")
+	}
+}
+
+func TestProbeSSDP(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	
+	// Test SSDP probe - may or may not find a device
+	result := probeSSDP(ctx, "192.168.1.1")
+	
+	// We don't expect this to necessarily succeed, just to not crash
+	t.Logf("SSDP probe result: %s", result)
+}
+
+func TestProbeSNMP(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	
+	// Test SNMP probe - unlikely to succeed without a real SNMP agent
+	result := probeSNMP(ctx, "127.0.0.1", 161)
+	
+	// We don't expect this to succeed, just to not crash
+	t.Logf("SNMP probe result: %s", result)
+}
+
+func TestMinFunction(t *testing.T) {
+	tests := []struct {
+		a, b, expected int
+	}{
+		{1, 2, 1},
+		{5, 3, 3},
+		{10, 10, 10},
+		{0, 100, 0},
+	}
+	
+	for _, tt := range tests {
+		result := min(tt.a, tt.b)
+		if result != tt.expected {
+			t.Errorf("min(%d, %d) = %d, expected %d", tt.a, tt.b, result, tt.expected)
+		}
+	}
+}
+
