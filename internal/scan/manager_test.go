@@ -214,7 +214,7 @@ func TestBuildDNSQuery(t *testing.T) {
 	// Check header structure
 	// Questions count should be 1
 	if query[4] != 0x00 || query[5] != 0x01 {
-		t.Fatalf("expected 1 question in DNS query, got %d", int(query[4])<<8|int(query[5]))
+		t.Fatalf("expected 1 question in DNS query, got %d", (int(query[4])<<8)|int(query[5]))
 	}
 
 	// Check that it ends with query type (12 = PTR) and class (1 = IN)

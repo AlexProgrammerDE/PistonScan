@@ -613,6 +613,16 @@ func pingHost(ctx context.Context, host string, attempts int) (pingSummary, erro
 	return summary, nil
 }
 
+const (
+	// NetBIOS protocol constants
+	netbiosHeaderSize       = 12
+	netbiosQuestionSize     = 38
+	netbiosMinResponseSize  = 57 // Header + question + minimum answer header
+	netbiosNameEntrySize    = 18
+	netbiosNameFieldSize    = 15
+	netbiosAnswerHeaderSize = 10
+)
+
 var (
 	macLinePattern      = regexp.MustCompile(`(?i)([0-9a-f]{2}[:-]){5}([0-9a-f]{2})`)
 	whitespacePattern   = regexp.MustCompile(`\s+`)
@@ -847,8 +857,8 @@ func lookupNetBIOS(ctx context.Context, host string) []string {
 }
 
 func parseNetBIOSResponse(data []byte) []string {
-	// Minimal header is 12 bytes
-	if len(data) < 57 {
+	// Check minimum response size
+	if len(data) < netbiosMinResponseSize {
 		return nil
 	}
 
@@ -858,17 +868,15 @@ func parseNetBIOSResponse(data []byte) []string {
 	}
 
 	// Skip to the answer section
-	// Header: 12 bytes
-	// Question section: 34 bytes (encoded name) + 4 bytes (type + class) = 38 bytes
-	// Then comes the answer section
-	offset := 12 + 38
+	// Header + Question section
+	offset := netbiosHeaderSize + netbiosQuestionSize
 
-	if len(data) < offset+10 {
+	if len(data) < offset+netbiosAnswerHeaderSize {
 		return nil
 	}
 
 	// Skip name pointer (2 bytes), type (2 bytes), class (2 bytes), TTL (4 bytes)
-	offset += 10
+	offset += netbiosAnswerHeaderSize
 
 	// Read data length (2 bytes)
 	if len(data) < offset+2 {
@@ -884,41 +892,42 @@ func parseNetBIOSResponse(data []byte) []string {
 	numNames := int(data[offset])
 	offset++
 
-	var names []string
-	for i := 0; i < numNames && offset+18 <= len(data); i++ {
+	// Use map for efficient duplicate detection
+	nameSet := make(map[string]struct{})
+	
+	for i := 0; i < numNames && offset+netbiosNameEntrySize <= len(data); i++ {
 		// Extract name (15 bytes)
-		nameBytes := data[offset : offset+15]
+		nameBytes := data[offset : offset+netbiosNameFieldSize]
 		name := strings.TrimSpace(string(nameBytes))
 		
 		// Name type (1 byte) - we want unique names (type 0x00) and workstation names (type 0x00, 0x03, 0x20)
-		nameType := data[offset+15]
+		nameType := data[offset+netbiosNameFieldSize]
 		
 		// Flags (2 bytes) - bit 15 indicates if name is active
-		flags := uint16(data[offset+16])<<8 | uint16(data[offset+17])
+		flags := uint16(data[offset+netbiosNameFieldSize+1])<<8 | uint16(data[offset+netbiosNameFieldSize+2])
 		
 		// Only add active unique names (not group names)
 		if name != "" && flags&0x8000 != 0 && (nameType == 0x00 || nameType == 0x03 || nameType == 0x20) {
-			// Avoid duplicates
-			found := false
-			for _, existing := range names {
-				if existing == name {
-					found = true
-					break
-				}
-			}
-			if !found {
-				names = append(names, name)
-			}
+			nameSet[name] = struct{}{}
 		}
 		
-		offset += 18
+		offset += netbiosNameEntrySize
 		
 		// Don't process more than the reported data length
-		if offset-57 >= dataLen {
+		if offset-netbiosMinResponseSize >= dataLen {
 			break
 		}
 	}
 
+	if len(nameSet) == 0 {
+		return nil
+	}
+	
+	// Convert map to sorted slice
+	names := make([]string, 0, len(nameSet))
+	for name := range nameSet {
+		names = append(names, name)
+	}
 	sort.Strings(names)
 	return names
 }
