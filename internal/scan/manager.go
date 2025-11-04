@@ -1,16 +1,24 @@
 package scan
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
+	"os"
+	"os/exec"
+	"regexp"
 	"runtime"
+	"sort"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	ping "github.com/go-ping/ping"
+	"github.com/grandcat/zeroconf"
 )
 
 // Config describes the parameters of a scan run.
@@ -47,10 +55,28 @@ const (
 
 // Result captures information gathered for a single host.
 type Result struct {
-	IP        string  `json:"ip"`
-	Reachable bool    `json:"reachable"`
-	LatencyMs float64 `json:"latencyMs"`
-	Error     string  `json:"error,omitempty"`
+	IP             string        `json:"ip"`
+	Reachable      bool          `json:"reachable"`
+	LatencyMs      float64       `json:"latencyMs"`
+	LatencySamples []float64     `json:"latencySamples,omitempty"`
+	Attempts       int           `json:"attempts"`
+	TTL            int           `json:"ttl,omitempty"`
+	Hostnames      []string      `json:"hostnames,omitempty"`
+	MDNSNames      []string      `json:"mdnsNames,omitempty"`
+	DeviceName     string        `json:"deviceName,omitempty"`
+	MacAddress     string        `json:"macAddress,omitempty"`
+	Manufacturer   string        `json:"manufacturer,omitempty"`
+	OSGuess        string        `json:"osGuess,omitempty"`
+	Services       []ServiceInfo `json:"services,omitempty"`
+	Error          string        `json:"error,omitempty"`
+}
+
+// ServiceInfo describes an identified network service running on a host.
+type ServiceInfo struct {
+	Port     int    `json:"port"`
+	Protocol string `json:"protocol"`
+	Service  string `json:"service"`
+	Banner   string `json:"banner,omitempty"`
 }
 
 // Progress contains a summary of the current scan progress.
@@ -346,17 +372,9 @@ func (m *Manager) scanTarget(ctx context.Context, host string) {
 		return
 	}
 
-	latency, err := pingHost(ctx, host)
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+	result := collectHostDetails(ctx, host)
+	if errors.Is(ctx.Err(), context.Canceled) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return
-	}
-
-	result := Result{IP: host}
-	if err != nil {
-		result.Error = err.Error()
-	} else {
-		result.Reachable = true
-		result.LatencyMs = float64(latency) / float64(time.Millisecond)
 	}
 
 	m.mu.Lock()
@@ -450,15 +468,65 @@ func incrementIP(ip net.IP) {
 	}
 }
 
-type pingResult struct {
-	latency time.Duration
-	err     error
+func collectHostDetails(ctx context.Context, host string) Result {
+	result := Result{IP: host}
+
+	summary, err := pingHost(ctx, host, 3)
+	result.Attempts = summary.Attempts
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return result
+		}
+		result.Error = err.Error()
+		return result
+	}
+
+	if !summary.Reachable {
+		result.Error = "no response"
+		return result
+	}
+
+	result.Reachable = true
+	result.LatencyMs = summary.AvgLatency.Seconds() * 1000
+	result.LatencySamples = durationsToMillis(summary.Latencies)
+	result.TTL = summary.TTL
+
+	infoCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
+	defer cancel()
+
+	hostnames := lookupHostnames(infoCtx, host)
+	mdnsNames := lookupMDNS(infoCtx, host)
+	mac := lookupMACAddress(infoCtx, host)
+	manufacturer := lookupManufacturer(mac)
+	services := scanServices(infoCtx, host, defaultServicePorts)
+	deviceName := selectDeviceName(mdnsNames, hostnames)
+	osGuess := guessOS(summary.TTL, services)
+
+	result.Hostnames = hostnames
+	result.MDNSNames = mdnsNames
+	result.MacAddress = mac
+	result.Manufacturer = manufacturer
+	result.Services = services
+	result.DeviceName = deviceName
+	result.OSGuess = osGuess
+
+	return result
 }
 
-func pingHost(ctx context.Context, host string) (time.Duration, error) {
+type pingSummary struct {
+	Reachable  bool
+	Latencies  []time.Duration
+	AvgLatency time.Duration
+	Attempts   int
+	TTL        int
+}
+
+func pingHost(ctx context.Context, host string, attempts int) (pingSummary, error) {
+	summary := pingSummary{Attempts: attempts}
+
 	pinger, err := ping.NewPinger(host)
 	if err != nil {
-		return 0, err
+		return summary, err
 	}
 
 	if runtime.GOOS == "windows" {
@@ -467,20 +535,26 @@ func pingHost(ctx context.Context, host string) (time.Duration, error) {
 		pinger.SetPrivileged(false)
 	}
 
-	pinger.Count = 1
-	pinger.Timeout = 2 * time.Second
+	if attempts <= 0 {
+		attempts = 1
+	}
+	pinger.Count = attempts
+	pinger.Timeout = time.Duration(attempts) * 2 * time.Second
 
-	statsCh := make(chan pingResult, 1)
+	statsCh := make(chan *ping.Statistics, 1)
+	var latenciesMu sync.Mutex
+
+	pinger.OnRecv = func(pkt *ping.Packet) {
+		latenciesMu.Lock()
+		summary.Latencies = append(summary.Latencies, pkt.Rtt)
+		if pkt.Ttl > 0 {
+			summary.TTL = pkt.Ttl
+		}
+		latenciesMu.Unlock()
+	}
+
 	pinger.OnFinish = func(stats *ping.Statistics) {
-		if stats == nil {
-			statsCh <- pingResult{err: errors.New("no statistics available")}
-			return
-		}
-		if stats.PacketsRecv == 0 {
-			statsCh <- pingResult{err: errors.New("no response")}
-			return
-		}
-		statsCh <- pingResult{latency: stats.AvgRtt}
+		statsCh <- stats
 	}
 
 	errCh := make(chan error, 1)
@@ -491,12 +565,325 @@ func pingHost(ctx context.Context, host string) (time.Duration, error) {
 	select {
 	case <-ctx.Done():
 		pinger.Stop()
-		return 0, ctx.Err()
+		return summary, ctx.Err()
 	case err := <-errCh:
 		if err != nil {
-			return 0, err
+			return summary, err
 		}
-		res := <-statsCh
-		return res.latency, res.err
 	}
+
+	var stats *ping.Statistics
+	select {
+	case stats = <-statsCh:
+	case <-ctx.Done():
+		return summary, ctx.Err()
+	}
+
+	if stats == nil {
+		return summary, errors.New("no statistics available")
+	}
+	summary.Attempts = stats.PacketsSent
+	if stats.PacketsRecv == 0 {
+		return summary, errors.New("no response")
+	}
+
+	summary.Reachable = true
+	summary.AvgLatency = stats.AvgRtt
+	return summary, nil
+}
+
+var (
+	macLinePattern      = regexp.MustCompile(`(?i)([0-9a-f]{2}[:-]){5}([0-9a-f]{2})`)
+	whitespacePattern   = regexp.MustCompile(`\s+`)
+	defaultServicePorts = []int{80, 443, 8080, 8443, 8000, 8001, 8002, 8003, 8004, 8005, 8006, 8007, 8008, 8009, 8010, 3000, 4200, 5000, 7000, 22, 445, 3389, 5353, 1900, 21, 23, 25, 110, 143, 139, 135, 548, 631, 554, 5357, 8765, 8888, 53}
+	knownServiceNames   = map[int]string{
+		21:   "FTP",
+		22:   "SSH",
+		23:   "Telnet",
+		25:   "SMTP",
+		53:   "DNS",
+		80:   "HTTP",
+		110:  "POP3",
+		135:  "MS RPC",
+		139:  "NetBIOS",
+		143:  "IMAP",
+		443:  "HTTPS",
+		445:  "SMB",
+		548:  "AFP",
+		554:  "RTSP",
+		631:  "IPP",
+		700:  "EPP",
+		7000: "AirPlay",
+		8080: "HTTP Alt",
+		8443: "HTTPS Alt",
+		3389: "RDP",
+		4200: "Angular Dev",
+		5000: "UPnP/WS",
+		5353: "mDNS",
+		5357: "Web Services",
+		8000: "HTTP Dev",
+		8888: "HTTP Alt",
+	}
+)
+
+func lookupHostnames(ctx context.Context, host string) []string {
+	lookupCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	names, err := net.DefaultResolver.LookupAddr(lookupCtx, host)
+	if err != nil {
+		return nil
+	}
+	return uniqueStrings(names)
+}
+
+func lookupMDNS(ctx context.Context, host string) []string {
+	resolver, err := zeroconf.NewResolver(nil)
+	if err != nil {
+		return nil
+	}
+
+	entries := make(chan *zeroconf.ServiceEntry)
+	defer close(entries)
+
+	ctx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
+	defer cancel()
+
+	resultsMu := sync.Mutex{}
+	results := make(map[string]struct{})
+
+	go func() {
+		for entry := range entries {
+			for _, ipv4 := range entry.AddrIPv4 {
+				if ipv4.String() == host {
+					if entry.Instance != "" {
+						resultsMu.Lock()
+						results[entry.Instance] = struct{}{}
+						resultsMu.Unlock()
+					}
+					if entry.HostName != "" {
+						resultsMu.Lock()
+						results[entry.HostName] = struct{}{}
+						resultsMu.Unlock()
+					}
+				}
+			}
+		}
+	}()
+
+	if err := resolver.Browse(ctx, "_services._dns-sd._udp", "local.", entries); err != nil {
+		return nil
+	}
+	<-ctx.Done()
+
+	resultsMu.Lock()
+	defer resultsMu.Unlock()
+	if len(results) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(results))
+	for key := range results {
+		out = append(out, key)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func lookupMACAddress(ctx context.Context, host string) string {
+	if mac := lookupMACFromProc(host); mac != "" {
+		return mac
+	}
+	return lookupMACViaARPCommand(ctx, host)
+}
+
+func lookupMACFromProc(host string) string {
+	data, err := os.ReadFile("/proc/net/arp")
+	if err != nil {
+		return ""
+	}
+	lines := strings.Split(string(data), "\n")
+	for _, line := range lines[1:] {
+		fields := whitespacePattern.Split(strings.TrimSpace(line), -1)
+		if len(fields) < 4 {
+			continue
+		}
+		if fields[0] == host {
+			if mac := normaliseMAC(fields[3]); mac != "" {
+				return mac
+			}
+		}
+	}
+	return ""
+}
+
+func lookupMACViaARPCommand(ctx context.Context, host string) string {
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		cmd = exec.CommandContext(ctx, "arp", "-a", host)
+	} else {
+		cmd = exec.CommandContext(ctx, "arp", "-n", host)
+	}
+	output, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	match := macLinePattern.FindString(string(output))
+	return normaliseMAC(match)
+}
+
+func lookupManufacturer(mac string) string {
+	if mac == "" {
+		return ""
+	}
+	mac = strings.ToUpper(strings.ReplaceAll(mac, ":", ""))
+	if len(mac) < 6 {
+		return ""
+	}
+	prefix := mac[:6]
+	if vendor, ok := ouiVendors[prefix]; ok {
+		return vendor
+	}
+	return "Unknown"
+}
+
+func selectDeviceName(mdns, hostnames []string) string {
+	if len(mdns) > 0 {
+		return mdns[0]
+	}
+	if len(hostnames) > 0 {
+		return hostnames[0]
+	}
+	return ""
+}
+
+func guessOS(ttl int, services []ServiceInfo) string {
+	if ttl == 0 {
+		ttl = 64
+	}
+	switch {
+	case ttl <= 64:
+		if hasService(services, 548) || hasService(services, 7000) {
+			return "Apple / macOS"
+		}
+		return "Linux / Unix"
+	case ttl <= 128:
+		if hasService(services, 445) || hasService(services, 3389) {
+			return "Windows"
+		}
+		return "Windows (likely)"
+	case ttl >= 200:
+		return "Network Appliance"
+	default:
+		return "Unknown"
+	}
+}
+
+func hasService(services []ServiceInfo, port int) bool {
+	for _, svc := range services {
+		if svc.Port == port {
+			return true
+		}
+	}
+	return false
+}
+
+func scanServices(ctx context.Context, host string, ports []int) []ServiceInfo {
+	dialer := &net.Dialer{Timeout: 400 * time.Millisecond}
+	var services []ServiceInfo
+	for _, port := range ports {
+		select {
+		case <-ctx.Done():
+			return services
+		default:
+		}
+		addr := net.JoinHostPort(host, strconv.Itoa(port))
+		conn, err := dialer.DialContext(ctx, "tcp", addr)
+		if err != nil {
+			continue
+		}
+		_ = conn.SetDeadline(time.Now().Add(300 * time.Millisecond))
+		banner := readServiceBanner(conn, port)
+		_ = conn.Close()
+
+		name := knownServiceNames[port]
+		if name == "" {
+			name = fmt.Sprintf("TCP %d", port)
+		}
+		services = append(services, ServiceInfo{Port: port, Protocol: "tcp", Service: name, Banner: banner})
+	}
+	return services
+}
+
+func readServiceBanner(conn net.Conn, port int) string {
+	if isHTTPPort(port) {
+		fmt.Fprintf(conn, "HEAD / HTTP/1.0\r\nHost: %s\r\n\r\n", conn.RemoteAddr().String())
+	}
+	reader := bufio.NewReader(conn)
+	line, err := reader.ReadString('\n')
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(line)
+}
+
+func isHTTPPort(port int) bool {
+	switch port {
+	case 80, 443, 8080, 8443, 8000, 8001, 8002, 8003, 8004, 8005, 8006, 8007, 8008, 8009, 8010, 8888:
+		return true
+	default:
+		return false
+	}
+}
+
+func durationsToMillis(values []time.Duration) []float64 {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make([]float64, 0, len(values))
+	for _, v := range values {
+		out = append(out, v.Seconds()*1000)
+	}
+	return out
+}
+
+func uniqueStrings(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(values))
+	var out []string
+	for _, v := range values {
+		normalized := strings.TrimSuffix(v, ".")
+		if normalized == "" {
+			continue
+		}
+		if _, ok := seen[normalized]; ok {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		out = append(out, normalized)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func normaliseMAC(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	raw = strings.ToUpper(strings.ReplaceAll(strings.ReplaceAll(raw, "-", ":"), ".", ":"))
+	match := macLinePattern.FindString(raw)
+	if match == "" {
+		return ""
+	}
+	parts := strings.Split(match, ":")
+	if len(parts) != 6 {
+		return ""
+	}
+	for i := range parts {
+		if len(parts[i]) == 1 {
+			parts[i] = "0" + parts[i]
+		}
+	}
+	return strings.Join(parts, ":")
 }
