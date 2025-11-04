@@ -63,6 +63,8 @@ type Result struct {
 	TTL            int           `json:"ttl,omitempty"`
 	Hostnames      []string      `json:"hostnames,omitempty"`
 	MDNSNames      []string      `json:"mdnsNames,omitempty"`
+	NetBIOSNames   []string      `json:"netbiosNames,omitempty"`
+	LLMNRNames     []string      `json:"llmnrNames,omitempty"`
 	DeviceName     string        `json:"deviceName,omitempty"`
 	MacAddress     string        `json:"macAddress,omitempty"`
 	Manufacturer   string        `json:"manufacturer,omitempty"`
@@ -496,14 +498,18 @@ func collectHostDetails(ctx context.Context, host string) Result {
 
 	hostnames := lookupHostnames(infoCtx, host)
 	mdnsNames := lookupMDNS(infoCtx, host)
+	netbiosNames := lookupNetBIOS(infoCtx, host)
+	llmnrNames := lookupLLMNR(infoCtx, host)
 	mac := lookupMACAddress(infoCtx, host)
 	manufacturer := lookupManufacturer(mac)
 	services := scanServices(infoCtx, host, defaultServicePorts)
-	deviceName := selectDeviceName(mdnsNames, hostnames)
+	deviceName := selectDeviceName(mdnsNames, netbiosNames, llmnrNames, hostnames)
 	osGuess := guessOS(summary.TTL, services)
 
 	result.Hostnames = hostnames
 	result.MDNSNames = mdnsNames
+	result.NetBIOSNames = netbiosNames
+	result.LLMNRNames = llmnrNames
 	result.MacAddress = mac
 	result.Manufacturer = manufacturer
 	result.Services = services
@@ -714,13 +720,37 @@ func lookupMDNS(ctx context.Context, host string) []string {
 
 	// Browse for all service types to find devices
 	// This is a broader search that will find more devices
+	// Enhanced list of service types for better device discovery
 	serviceTypes := []string{
-		"_services._dns-sd._udp",
-		"_workstation._tcp",
-		"_device-info._tcp",
-		"_http._tcp",
-		"_ssh._tcp",
-		"_smb._tcp",
+		"_services._dns-sd._udp", // Service discovery
+		"_workstation._tcp",      // Workstations
+		"_device-info._tcp",      // Device info
+		"_http._tcp",             // HTTP servers
+		"_https._tcp",            // HTTPS servers
+		"_ssh._tcp",              // SSH servers
+		"_smb._tcp",              // SMB/Samba file sharing
+		"_afpovertcp._tcp",       // Apple Filing Protocol
+		"_ftp._tcp",              // FTP servers
+		"_printer._tcp",          // Printers
+		"_ipp._tcp",              // Internet Printing Protocol
+		"_pdl-datastream._tcp",   // Printer PDL data stream
+		"_airplay._tcp",          // AirPlay
+		"_raop._tcp",             // Remote Audio Output Protocol (AirPlay audio)
+		"_homekit._tcp",          // HomeKit devices
+		"_hap._tcp",              // HomeKit Accessory Protocol
+		"_companion-link._tcp",   // Apple devices
+		"_sleep-proxy._udp",      // Bonjour sleep proxy
+		"_rdp._tcp",              // Remote Desktop Protocol
+		"_rfb._tcp",              // VNC (Remote Frame Buffer)
+		"_telnet._tcp",           // Telnet
+		"_nfs._tcp",              // NFS file sharing
+		"_webdav._tcp",           // WebDAV
+		"_daap._tcp",             // Digital Audio Access Protocol (iTunes)
+		"_dpap._tcp",             // Digital Photo Access Protocol
+		"_dacp._tcp",             // Digital Audio Control Protocol
+		"_googlecast._tcp",       // Google Cast/Chromecast
+		"_spotify-connect._tcp",  // Spotify Connect
+		"_sonos._tcp",            // Sonos speakers
 	}
 
 BrowseLoop:
@@ -750,6 +780,368 @@ BrowseLoop:
 	}
 	sort.Strings(out)
 	return out
+}
+
+// lookupNetBIOS queries for NetBIOS names using NBNS (NetBIOS Name Service)
+// NetBIOS operates on UDP port 137
+func lookupNetBIOS(ctx context.Context, host string) []string {
+	// NetBIOS Name Query packet structure:
+	// Transaction ID: 2 bytes
+	// Flags: 2 bytes (0x0000 for query)
+	// Questions: 2 bytes (0x0001)
+	// Answer RRs: 2 bytes (0x0000)
+	// Authority RRs: 2 bytes (0x0000)
+	// Additional RRs: 2 bytes (0x0000)
+	// Name: encoded NetBIOS name (34 bytes for "*" wildcard)
+	// Type: 2 bytes (0x0021 for NB - NetBIOS general name service)
+	// Class: 2 bytes (0x0001 for IN - Internet)
+
+	// Create NetBIOS Name Query for wildcard "*" (node status request)
+	query := []byte{
+		0x82, 0x28, // Transaction ID
+		0x00, 0x00, // Flags: Standard query
+		0x00, 0x01, // Questions: 1
+		0x00, 0x00, // Answer RRs: 0
+		0x00, 0x00, // Authority RRs: 0
+		0x00, 0x00, // Additional RRs: 0
+		// Encoded "*" - wildcard query
+		0x20, 0x43, 0x4b, 0x41, 0x41, 0x41, 0x41, 0x41,
+		0x41, 0x41, 0x41, 0x41, 0x41, 0x41, 0x41, 0x41,
+		0x41, 0x41, 0x41, 0x41, 0x41, 0x41, 0x41, 0x41,
+		0x41, 0x41, 0x41, 0x41, 0x41, 0x41, 0x41, 0x41,
+		0x41, 0x00,
+		0x00, 0x21, // Type: NB (NetBIOS general name service)
+		0x00, 0x01, // Class: IN
+	}
+
+	conn, err := net.DialTimeout("udp", net.JoinHostPort(host, "137"), 1*time.Second)
+	if err != nil {
+		return nil
+	}
+	defer conn.Close()
+
+	// Set deadline for the entire operation
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		deadline = time.Now().Add(2 * time.Second)
+	}
+	conn.SetDeadline(deadline)
+
+	// Send query
+	_, err = conn.Write(query)
+	if err != nil {
+		return nil
+	}
+
+	// Read response
+	response := make([]byte, 4096)
+	n, err := conn.Read(response)
+	if err != nil {
+		return nil
+	}
+
+	// Parse NetBIOS response
+	// Response format includes name entries after the header
+	// Each name entry is 18 bytes: 15 bytes for name + 1 byte for name type + 2 bytes for flags
+	return parseNetBIOSResponse(response[:n])
+}
+
+func parseNetBIOSResponse(data []byte) []string {
+	// Minimal header is 12 bytes
+	if len(data) < 57 {
+		return nil
+	}
+
+	// Check if it's a response (bit 15 of flags should be 1)
+	if data[2]&0x80 == 0 {
+		return nil
+	}
+
+	// Skip to the answer section
+	// Header: 12 bytes
+	// Question section: 34 bytes (encoded name) + 4 bytes (type + class) = 38 bytes
+	// Then comes the answer section
+	offset := 12 + 38
+
+	if len(data) < offset+10 {
+		return nil
+	}
+
+	// Skip name pointer (2 bytes), type (2 bytes), class (2 bytes), TTL (4 bytes)
+	offset += 10
+
+	// Read data length (2 bytes)
+	if len(data) < offset+2 {
+		return nil
+	}
+	dataLen := int(data[offset])<<8 | int(data[offset+1])
+	offset += 2
+
+	// Number of names (1 byte)
+	if len(data) < offset+1 {
+		return nil
+	}
+	numNames := int(data[offset])
+	offset++
+
+	var names []string
+	for i := 0; i < numNames && offset+18 <= len(data); i++ {
+		// Extract name (15 bytes)
+		nameBytes := data[offset : offset+15]
+		name := strings.TrimSpace(string(nameBytes))
+		
+		// Name type (1 byte) - we want unique names (type 0x00) and workstation names (type 0x00, 0x03, 0x20)
+		nameType := data[offset+15]
+		
+		// Flags (2 bytes) - bit 15 indicates if name is active
+		flags := uint16(data[offset+16])<<8 | uint16(data[offset+17])
+		
+		// Only add active unique names (not group names)
+		if name != "" && flags&0x8000 != 0 && (nameType == 0x00 || nameType == 0x03 || nameType == 0x20) {
+			// Avoid duplicates
+			found := false
+			for _, existing := range names {
+				if existing == name {
+					found = true
+					break
+				}
+			}
+			if !found {
+				names = append(names, name)
+			}
+		}
+		
+		offset += 18
+		
+		// Don't process more than the reported data length
+		if offset-57 >= dataLen {
+			break
+		}
+	}
+
+	sort.Strings(names)
+	return names
+}
+
+// lookupLLMNR queries for names using LLMNR (Link-Local Multicast Name Resolution)
+// LLMNR uses IPv4 multicast address 224.0.0.252 on UDP port 5355
+func lookupLLMNR(ctx context.Context, host string) []string {
+	// Create a reverse lookup query - convert IP to in-addr.arpa format
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return nil
+	}
+	
+	ipv4 := ip.To4()
+	if ipv4 == nil {
+		return nil // Only support IPv4 for now
+	}
+
+	// Build PTR query for reverse lookup (IP to name)
+	// Format: x.x.x.x.in-addr.arpa
+	arpaName := fmt.Sprintf("%d.%d.%d.%d.in-addr.arpa", ipv4[3], ipv4[2], ipv4[1], ipv4[0])
+	
+	// Build DNS query for LLMNR
+	query := buildDNSQuery(arpaName, 12) // Type 12 = PTR
+
+	// LLMNR multicast address
+	llmnrAddr := &net.UDPAddr{
+		IP:   net.ParseIP("224.0.0.252"),
+		Port: 5355,
+	}
+
+	// We need to listen on the interface connected to this subnet
+	// Use a unicast query to the target host instead of multicast for better results
+	targetAddr := &net.UDPAddr{
+		IP:   ipv4,
+		Port: 5355,
+	}
+
+	conn, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4zero, Port: 0})
+	if err != nil {
+		return nil
+	}
+	defer conn.Close()
+
+	// Set deadline
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		deadline = time.Now().Add(1 * time.Second)
+	}
+	conn.SetDeadline(deadline)
+
+	// Try both multicast and unicast
+	_, _ = conn.WriteToUDP(query, llmnrAddr)
+	_, _ = conn.WriteToUDP(query, targetAddr)
+
+	// Read responses
+	response := make([]byte, 512)
+	n, _, err := conn.ReadFromUDP(response)
+	if err != nil {
+		return nil
+	}
+
+	// Parse DNS response
+	return parseDNSResponse(response[:n])
+}
+
+func buildDNSQuery(name string, queryType uint16) []byte {
+	// DNS header
+	query := []byte{
+		0x00, 0x01, // Transaction ID
+		0x01, 0x00, // Flags: standard query
+		0x00, 0x01, // Questions: 1
+		0x00, 0x00, // Answer RRs: 0
+		0x00, 0x00, // Authority RRs: 0
+		0x00, 0x00, // Additional RRs: 0
+	}
+
+	// Encode domain name
+	labels := strings.Split(name, ".")
+	for _, label := range labels {
+		query = append(query, byte(len(label)))
+		query = append(query, []byte(label)...)
+	}
+	query = append(query, 0x00) // End of name
+
+	// Query type and class
+	query = append(query, byte(queryType>>8), byte(queryType&0xFF)) // Type
+	query = append(query, 0x00, 0x01)                               // Class: IN
+
+	return query
+}
+
+func parseDNSResponse(data []byte) []string {
+	if len(data) < 12 {
+		return nil
+	}
+
+	// Check if it's a response
+	if data[2]&0x80 == 0 {
+		return nil
+	}
+
+	// Get answer count
+	answerCount := int(data[6])<<8 | int(data[7])
+	if answerCount == 0 {
+		return nil
+	}
+
+	// Skip header (12 bytes) and question section
+	offset := 12
+	
+	// Skip question name
+	for offset < len(data) && data[offset] != 0 {
+		if data[offset]&0xC0 == 0xC0 {
+			// Compressed name (pointer)
+			offset += 2
+			break
+		}
+		offset += int(data[offset]) + 1
+	}
+	if offset >= len(data) {
+		return nil
+	}
+	if data[offset-1] != 0 && (data[offset-2]&0xC0) != 0xC0 {
+		offset++ // Skip final zero byte if not compressed
+	}
+	offset += 4 // Skip type and class
+
+	var names []string
+	
+	// Parse answers
+	for i := 0; i < answerCount && offset < len(data); i++ {
+		// Skip name (may be compressed)
+		if offset >= len(data) {
+			break
+		}
+		if data[offset]&0xC0 == 0xC0 {
+			offset += 2
+		} else {
+			for offset < len(data) && data[offset] != 0 {
+				offset += int(data[offset]) + 1
+			}
+			offset++ // Skip zero byte
+		}
+
+		if offset+10 > len(data) {
+			break
+		}
+
+		// Get type
+		recType := uint16(data[offset])<<8 | uint16(data[offset+1])
+		offset += 2
+
+		// Skip class (2 bytes) and TTL (4 bytes)
+		offset += 6
+
+		// Get data length
+		dataLen := int(data[offset])<<8 | int(data[offset+1])
+		offset += 2
+
+		if offset+dataLen > len(data) {
+			break
+		}
+
+		// If PTR record, parse the name
+		if recType == 12 {
+			name := parseDNSName(data, offset)
+			if name != "" {
+				// Remove .local or .in-addr.arpa suffix if present
+				name = strings.TrimSuffix(name, ".local")
+				name = strings.TrimSuffix(name, ".in-addr.arpa")
+				name = strings.TrimSuffix(name, ".")
+				names = append(names, name)
+			}
+		}
+
+		offset += dataLen
+	}
+
+	if len(names) == 0 {
+		return nil
+	}
+	return uniqueStrings(names)
+}
+
+func parseDNSName(data []byte, offset int) string {
+	var parts []string
+	visited := make(map[int]bool)
+	maxJumps := 10
+	jumps := 0
+
+	for offset < len(data) && jumps < maxJumps {
+		if visited[offset] {
+			break
+		}
+		visited[offset] = true
+
+		length := int(data[offset])
+		if length == 0 {
+			break
+		}
+
+		// Check for compression
+		if length&0xC0 == 0xC0 {
+			if offset+1 >= len(data) {
+				break
+			}
+			pointer := int(data[offset]&0x3F)<<8 | int(data[offset+1])
+			offset = pointer
+			jumps++
+			continue
+		}
+
+		offset++
+		if offset+length > len(data) {
+			break
+		}
+
+		parts = append(parts, string(data[offset:offset+length]))
+		offset += length
+	}
+
+	return strings.Join(parts, ".")
 }
 
 func lookupMACAddress(ctx context.Context, host string) string {
@@ -809,10 +1201,20 @@ func lookupManufacturer(mac string) string {
 	return "Unknown"
 }
 
-func selectDeviceName(mdns, hostnames []string) string {
+func selectDeviceName(mdns, netbios, llmnr, hostnames []string) string {
+	// Prioritize mDNS names as they are most reliable and user-friendly
 	if len(mdns) > 0 {
 		return mdns[0]
 	}
+	// NetBIOS names are common on Windows networks
+	if len(netbios) > 0 {
+		return netbios[0]
+	}
+	// LLMNR is also common on Windows
+	if len(llmnr) > 0 {
+		return llmnr[0]
+	}
+	// Fall back to DNS hostnames
 	if len(hostnames) > 0 {
 		return hostnames[0]
 	}
