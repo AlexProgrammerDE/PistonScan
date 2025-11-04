@@ -3,6 +3,7 @@ package scan
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sync"
 	"time"
 )
@@ -50,7 +51,7 @@ func (m *Manager) Start(ctx context.Context, config Config, update func(Update),
 		return Snapshot{}, err
 	}
 	if len(targets) == 0 {
-		return Snapshot{}, ErrScanInProgress
+		return Snapshot{}, errors.New("no targets resolved from subnet")
 	}
 
 	m.mu.Lock()
