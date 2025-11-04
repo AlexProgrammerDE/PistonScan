@@ -1,8 +1,22 @@
-# README
+# PistonScan
 
 ## About
 
-This is the official Wails React-TS template.
+PistonScan is a cross-platform network scanner built with Wails (Go + React). It provides comprehensive network discovery using multiple protocols for hostname resolution.
+
+### Network Discovery Protocols
+
+PistonScan supports multiple discovery protocols for maximum compatibility across different platforms:
+
+- **DNS** - Standard DNS reverse lookups (all platforms)
+- **mDNS/Bonjour** - Zero-configuration networking (macOS, iOS, Android, Windows 10+, Linux)
+- **DNS-SD** - Service discovery with 30+ service types (cross-platform)
+- **NetBIOS (NBNS)** - Windows name resolution, also via Samba on Linux
+- **LLMNR** - Link-Local Multicast Name Resolution (Windows, some Linux)
+
+For detailed information about each protocol, see [PROTOCOLS.md](PROTOCOLS.md).
+
+This is based on the official Wails React-TS template.
 
 You can configure the project by editing `wails.json`. More information about the project settings can be found
 here: https://wails.io/docs/reference/project-config
