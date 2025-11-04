@@ -497,13 +497,47 @@ func collectHostDetails(ctx context.Context, host string) Result {
 	infoCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
 	defer cancel()
 
-	hostnames := lookupHostnames(infoCtx, host)
-	mdnsNames := lookupMDNS(infoCtx, host)
-	netbiosNames := lookupNetBIOS(infoCtx, host)
-	llmnrNames := lookupLLMNR(infoCtx, host)
-	mac := lookupMACAddress(infoCtx, host)
+	// Run all lookup operations in parallel to ensure they all complete
+	var wg sync.WaitGroup
+	var hostnames, mdnsNames, netbiosNames, llmnrNames []string
+	var mac string
+	var services []ServiceInfo
+
+	wg.Add(6)
+	
+	go func() {
+		defer wg.Done()
+		hostnames = lookupHostnames(infoCtx, host)
+	}()
+	
+	go func() {
+		defer wg.Done()
+		mdnsNames = lookupMDNS(infoCtx, host)
+	}()
+	
+	go func() {
+		defer wg.Done()
+		netbiosNames = lookupNetBIOS(infoCtx, host)
+	}()
+	
+	go func() {
+		defer wg.Done()
+		llmnrNames = lookupLLMNR(infoCtx, host)
+	}()
+	
+	go func() {
+		defer wg.Done()
+		mac = lookupMACAddress(infoCtx, host)
+	}()
+	
+	go func() {
+		defer wg.Done()
+		services = scanServices(infoCtx, host, defaultServicePorts)
+	}()
+
+	wg.Wait()
+
 	manufacturer := lookupManufacturer(mac)
-	services := scanServices(infoCtx, host, defaultServicePorts)
 	deviceName := selectDeviceName(mdnsNames, netbiosNames, llmnrNames, hostnames)
 	osGuess := guessOS(summary.TTL, services)
 
