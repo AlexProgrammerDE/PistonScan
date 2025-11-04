@@ -503,33 +503,38 @@ func collectHostDetails(ctx context.Context, host string) Result {
 	var mac string
 	var services []ServiceInfo
 
-	wg.Add(6)
-	
+	// Launch parallel lookup operations
+	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		hostnames = lookupHostnames(infoCtx, host)
 	}()
 	
+	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		mdnsNames = lookupMDNS(infoCtx, host)
 	}()
 	
+	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		netbiosNames = lookupNetBIOS(infoCtx, host)
 	}()
 	
+	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		llmnrNames = lookupLLMNR(infoCtx, host)
 	}()
 	
+	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		mac = lookupMACAddress(infoCtx, host)
 	}()
 	
+	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		services = scanServices(infoCtx, host, defaultServicePorts)
