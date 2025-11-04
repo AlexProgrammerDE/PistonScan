@@ -29,6 +29,7 @@ interface ServiceInfo {
     protocol: string;
     service: string;
     banner?: string;
+    tlsCertInfo?: string;
 }
 
 interface ScanResult {
@@ -40,11 +41,15 @@ interface ScanResult {
     ttl?: number;
     hostnames?: string[];
     mdnsNames?: string[];
+    netbiosNames?: string[];
+    llmnrNames?: string[];
     deviceName?: string;
     macAddress?: string;
     manufacturer?: string;
     osGuess?: string;
     services?: ServiceInfo[];
+    discoverySources?: string[];
+    insightScore?: number;
     error?: string;
 }
 
@@ -67,6 +72,8 @@ interface FormState {
 }
 
 const defaultProgress: ScanProgress = {total: 0, completed: 0, active: 0, status: 'idle'};
+
+type SortKey = 'insights' | 'latency' | 'ip';
 
 const normaliseError = (error: unknown): string => {
     if (typeof error === 'string') {
@@ -93,6 +100,9 @@ function App() {
     const [busyAction, setBusyAction] = useState<string | null>(null);
     const [showReachableOnly, setShowReachableOnly] = useState<boolean>(true);
     const [showSuccessfulOnly, setShowSuccessfulOnly] = useState<boolean>(false);
+    const [minInsightScore, setMinInsightScore] = useState<number>(0);
+    const [sortKey, setSortKey] = useState<SortKey>('insights');
+    const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
 
     const isRunning = progress.status === 'running';
     const isPaused = progress.status === 'paused';
@@ -105,17 +115,43 @@ function App() {
         return Math.min(100, Math.round((progress.completed / progress.total) * 100));
     }, [progress.completed, progress.total]);
 
-    const filteredResults = useMemo(() => {
-        return results.filter((item) => {
+    const maxInsightScore = useMemo(
+        () => results.reduce((max, item) => Math.max(max, item.insightScore ?? 0), 0),
+        [results]
+    );
+
+    useEffect(() => {
+        if (minInsightScore > maxInsightScore) {
+            setMinInsightScore(maxInsightScore);
+        }
+    }, [maxInsightScore, minInsightScore]);
+
+    const visibleResults = useMemo(() => {
+        const dataset = results.filter((item) => {
             if (showReachableOnly && !item.reachable) {
                 return false;
             }
             if (showSuccessfulOnly && (!item.reachable || item.error)) {
                 return false;
             }
-            return true;
+            return (item.insightScore ?? 0) >= minInsightScore;
         });
-    }, [results, showReachableOnly, showSuccessfulOnly]);
+
+        return dataset.sort((a, b) => {
+            switch (sortKey) {
+                case 'latency': {
+                    const latencyA = a.reachable ? a.latencyMs : Number.POSITIVE_INFINITY;
+                    const latencyB = b.reachable ? b.latencyMs : Number.POSITIVE_INFINITY;
+                    return latencyA - latencyB;
+                }
+                case 'ip':
+                    return a.ip.localeCompare(b.ip, undefined, {numeric: true});
+                case 'insights':
+                default:
+                    return (b.insightScore ?? 0) - (a.insightScore ?? 0);
+            }
+        });
+    }, [results, showReachableOnly, showSuccessfulOnly, minInsightScore, sortKey]);
 
     const totalReachable = useMemo(() => results.filter((item) => item.reachable).length, [results]);
 
@@ -129,16 +165,54 @@ function App() {
         return value.toFixed(2);
     };
 
-    const formatServices = (services?: ServiceInfo[]) => {
+    const summariseServices = (services?: ServiceInfo[]) => {
         if (!services || services.length === 0) {
             return '—';
         }
-        return services
-            .slice()
-            .sort((a, b) => a.port - b.port)
+        const sorted = services.slice().sort((a, b) => a.port - b.port);
+        const summary = sorted
+            .slice(0, 2)
             .map((svc) => `${svc.service} (${svc.port}/${svc.protocol.toUpperCase()})`)
             .join(', ');
+        if (sorted.length > 2) {
+            return `${summary} +${sorted.length - 2} more`;
+        }
+        return summary;
     };
+
+    const renderList = (values?: string[]) => {
+        if (!values || values.length === 0) {
+            return '—';
+        }
+        return values.join(', ');
+    };
+
+    const renderLatencySamples = (values?: number[]) => {
+        if (!values || values.length === 0) {
+            return '—';
+        }
+        return values.map((sample, index) => {
+            const formatted = formatLatency(sample);
+            const display = formatted === '—' ? formatted : `${formatted} ms`;
+            return (
+                <span className="latency-chip" key={index}>
+                    {display}
+                </span>
+            );
+        });
+    };
+
+    const toggleExpanded = (ip: string) => {
+        setExpandedRows((prev) => ({...prev, [ip]: !prev[ip]}));
+    };
+
+    const insightPresets = useMemo(() => {
+        return [
+            {label: 'All data', value: 0},
+            {label: 'Enriched (≥5)', value: Math.min(5, maxInsightScore)},
+            {label: 'Deep scan (≥10)', value: Math.min(10, maxInsightScore)}
+        ];
+    }, [maxInsightScore]);
 
     const updateFormFromSnapshot = useCallback((snapshot: ScanSnapshot) => {
         if (snapshot.config) {
@@ -432,13 +506,51 @@ function App() {
                             />
                             Successful only
                         </label>
-                        <span className="results-count">{filteredResults.length} / {results.length} hosts</span>
+                        <div className="insight-filter">
+                            <label htmlFor="insight-range">Minimum insights: {minInsightScore}</label>
+                            <input
+                                id="insight-range"
+                                type="range"
+                                min={0}
+                                max={Math.max(maxInsightScore, 1)}
+                                value={Math.min(minInsightScore, Math.max(maxInsightScore, 1))}
+                                onChange={(event) => setMinInsightScore(Number.parseInt(event.target.value, 10))}
+                                disabled={!results.length}
+                            />
+                            <div className="insight-presets">
+                                {insightPresets.map((preset) => (
+                                    <button
+                                        key={preset.label}
+                                        type="button"
+                                        className={preset.value === minInsightScore ? 'preset active' : 'preset'}
+                                        onClick={() => setMinInsightScore(preset.value)}
+                                        disabled={!results.length}
+                                    >
+                                        {preset.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="sort-control">
+                            <label htmlFor="sort-key">Sort</label>
+                            <select
+                                id="sort-key"
+                                value={sortKey}
+                                onChange={(event) => setSortKey(event.target.value as SortKey)}
+                            >
+                                <option value="insights">Highest insights</option>
+                                <option value="latency">Lowest latency</option>
+                                <option value="ip">IP address</option>
+                            </select>
+                        </div>
+                        <span className="results-count">{visibleResults.length} / {results.length} hosts</span>
                     </div>
                 </header>
                 <div className="table-wrapper">
                     <table className="results-table">
                         <thead>
                         <tr>
+                            <th aria-label="Expand" />
                             <th>Device</th>
                             <th>IP Address</th>
                             <th>MAC</th>
@@ -446,6 +558,7 @@ function App() {
                             <th>OS</th>
                             <th>Latency (ms)</th>
                             <th>Services</th>
+                            <th>Insights</th>
                             <th>Status</th>
                             <th>Notes</th>
                         </tr>
@@ -453,43 +566,158 @@ function App() {
                         <tbody>
                         {results.length === 0 ? (
                             <tr>
-                                <td colSpan={9} className="empty-state">No scan data yet. Start a scan to populate results.</td>
+                                <td colSpan={11} className="empty-state">No scan data yet. Start a scan to populate results.</td>
                             </tr>
-                        ) : filteredResults.length === 0 ? (
+                        ) : visibleResults.length === 0 ? (
                             <tr>
-                                <td colSpan={9} className="empty-state">No results match the current filters.</td>
+                                <td colSpan={11} className="empty-state">No results match the current filters.</td>
                             </tr>
                         ) : (
-                            filteredResults.map((item) => (
-                                <tr key={item.ip}>
-                                    <td>
-                                        <div className="device-name">{item.deviceName ?? '—'}</div>
-                                        <div className="device-aliases">
-                                            {[...(item.mdnsNames ?? []), ...(item.hostnames ?? [])]
-                                                .filter((value, index, array) => array.indexOf(value) === index)
-                                                .join(', ') || '—'}
-                                        </div>
-                                    </td>
-                                    <td>{item.ip}</td>
-                                    <td className="mono">{item.macAddress ?? '—'}</td>
-                                    <td>{item.manufacturer ?? '—'}</td>
-                                    <td>{item.osGuess ?? '—'}</td>
-                                    <td>{item.reachable ? formatLatency(item.latencyMs) : '—'}</td>
-                                    <td>{formatServices(item.services)}</td>
-                                    <td>
-                                        <span className={item.reachable ? 'badge badge-success' : 'badge badge-failure'}>
-                                            {item.reachable ? 'Reachable' : 'No response'}
-                                        </span>
-                                    </td>
-                                    <td>
-                                        {item.error ? (
-                                            <span className="error-text">{item.error}</span>
-                                        ) : (
-                                            <span className="meta">{item.ttl ? `TTL ${item.ttl}` : '—'} • {item.attempts} checks</span>
+                            visibleResults.map((item) => {
+                                const expanded = !!expandedRows[item.ip];
+                                const insightScore = item.insightScore ?? 0;
+                                const insightPercent = maxInsightScore > 0 ? Math.round((insightScore / maxInsightScore) * 100) : 0;
+                                const insightSources = item.discoverySources ?? [];
+                                return (
+                                    <>
+                                        <tr key={`${item.ip}-summary`} className={expanded ? 'expanded' : ''}>
+                                            <td>
+                                                <button
+                                                    type="button"
+                                                    className="expand-toggle"
+                                                    onClick={() => toggleExpanded(item.ip)}
+                                                    aria-expanded={expanded}
+                                                    aria-controls={`${item.ip}-details`}
+                                                >
+                                                    {expanded ? 'Hide' : 'View'}
+                                                </button>
+                                            </td>
+                                            <td>
+                                                <div className="device-name">{item.deviceName ?? '—'}</div>
+                                                <div className="device-aliases">
+                                                    {[...(item.mdnsNames ?? []), ...(item.hostnames ?? [])]
+                                                        .filter((value, index, array) => array.indexOf(value) === index)
+                                                        .join(', ') || '—'}
+                                                </div>
+                                            </td>
+                                            <td>{item.ip}</td>
+                                            <td className="mono">{item.macAddress ?? '—'}</td>
+                                            <td>{item.manufacturer ?? '—'}</td>
+                                            <td>{item.osGuess ?? '—'}</td>
+                                            <td>{item.reachable ? formatLatency(item.latencyMs) : '—'}</td>
+                                            <td>{summariseServices(item.services)}</td>
+                                            <td>
+                                                <div className="insight-score-cell">
+                                                    <div className="score-header">
+                                                        <span className="score-value">{insightScore}</span>
+                                                        <span className="score-label">score</span>
+                                                    </div>
+                                                    <div className="score-bar">
+                                                        <div style={{width: `${insightPercent}%`}} />
+                                                    </div>
+                                                    <div className="score-sources">
+                                                        {insightSources.length > 0 ? insightSources.slice(0, 3).join(', ') : '—'}
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <span className={item.reachable ? 'badge badge-success' : 'badge badge-failure'}>
+                                                    {item.reachable ? 'Reachable' : 'No response'}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                {item.error ? (
+                                                    <span className="error-text">{item.error}</span>
+                                                ) : (
+                                                    <span className="meta">{item.ttl ? `TTL ${item.ttl}` : '—'} • {item.attempts} checks</span>
+                                                )}
+                                            </td>
+                                        </tr>
+                                        {expanded && (
+                                            <tr className="expanded-row" id={`${item.ip}-details`} key={`${item.ip}-details`}>
+                                                <td colSpan={11}>
+                                                    <div className="detail-grid">
+                                                        <div className="detail-card">
+                                                            <h3>Network identity</h3>
+                                                            <ul>
+                                                                <li><span>IP:</span> {item.ip}</li>
+                                                                <li><span>MAC:</span> {item.macAddress ?? '—'}</li>
+                                                                <li><span>Manufacturer:</span> {item.manufacturer ?? '—'}</li>
+                                                                <li><span>Device name:</span> {item.deviceName ?? '—'}</li>
+                                                                <li><span>OS guess:</span> {item.osGuess ?? '—'}</li>
+                                                                <li><span>TTL:</span> {item.ttl ?? '—'}</li>
+                                                                <li><span>Checks:</span> {item.attempts}</li>
+                                                            </ul>
+                                                        </div>
+                                                        <div className="detail-card">
+                                                            <h3>Latency</h3>
+                                                            <p><strong>Average:</strong> {item.reachable ? `${formatLatency(item.latencyMs)} ms` : '—'}</p>
+                                                            <div className="latency-samples-wrapper">{renderLatencySamples(item.latencySamples)}</div>
+                                                        </div>
+                                                        <div className="detail-card">
+                                                            <h3>Discovery sources</h3>
+                                                            <div className="source-badges">
+                                                                {insightSources.length > 0
+                                                                    ? insightSources.map((source) => (
+                                                                          <span className="source-badge" key={source}>
+                                                                              {source}
+                                                                          </span>
+                                                                      ))
+                                                                    : '—'}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="detail-grid two-column">
+                                                        <div className="detail-card">
+                                                            <h3>Hostnames</h3>
+                                                            <dl>
+                                                                <dt>DNS</dt>
+                                                                <dd>{renderList(item.hostnames)}</dd>
+                                                                <dt>mDNS</dt>
+                                                                <dd>{renderList(item.mdnsNames)}</dd>
+                                                                <dt>NetBIOS</dt>
+                                                                <dd>{renderList(item.netbiosNames)}</dd>
+                                                                <dt>LLMNR</dt>
+                                                                <dd>{renderList(item.llmnrNames)}</dd>
+                                                            </dl>
+                                                        </div>
+                                                        <div className="detail-card">
+                                                            <h3>Services ({item.services?.length ?? 0})</h3>
+                                                            {item.services && item.services.length > 0 ? (
+                                                                <ul className="service-list">
+                                                                    {item.services.map((service) => (
+                                                                        <li key={`${service.protocol}-${service.port}-${service.service}`}>
+                                                                            <div className="service-header">
+                                                                                <span>
+                                                                                    {service.service} ({service.port}/
+                                                                                    {service.protocol.toUpperCase()})
+                                                                                </span>
+                                                                                {service.tlsCertInfo && (
+                                                                                    <span className="tls-chip">TLS</span>
+                                                                                )}
+                                                                            </div>
+                                                                            {service.banner && <div className="service-banner">{service.banner}</div>}
+                                                                            {service.tlsCertInfo && (
+                                                                                <div className="service-banner tls">{service.tlsCertInfo}</div>
+                                                                            )}
+                                                                        </li>
+                                                                    ))}
+                                                                </ul>
+                                                            ) : (
+                                                                <p>—</p>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                    <div className="detail-card full-width">
+                                                        <h3>Raw record</h3>
+                                                        <pre className="raw-json">{JSON.stringify(item, null, 2)}</pre>
+                                                    </div>
+                                                </td>
+                                            </tr>
                                         )}
-                                    </td>
-                                </tr>
-                            ))
+                                    </>
+                                );
+                            })
                         )}
                         </tbody>
                     </table>

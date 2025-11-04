@@ -39,22 +39,24 @@ const (
 
 // Result captures information gathered for a single host.
 type Result struct {
-	IP             string        `json:"ip"`
-	Reachable      bool          `json:"reachable"`
-	LatencyMs      float64       `json:"latencyMs"`
-	LatencySamples []float64     `json:"latencySamples,omitempty"`
-	Attempts       int           `json:"attempts"`
-	TTL            int           `json:"ttl,omitempty"`
-	Hostnames      []string      `json:"hostnames,omitempty"`
-	MDNSNames      []string      `json:"mdnsNames,omitempty"`
-	NetBIOSNames   []string      `json:"netbiosNames,omitempty"`
-	LLMNRNames     []string      `json:"llmnrNames,omitempty"`
-	DeviceName     string        `json:"deviceName,omitempty"`
-	MacAddress     string        `json:"macAddress,omitempty"`
-	Manufacturer   string        `json:"manufacturer,omitempty"`
-	OSGuess        string        `json:"osGuess,omitempty"`
-	Services       []ServiceInfo `json:"services,omitempty"`
-	Error          string        `json:"error,omitempty"`
+	IP               string        `json:"ip"`
+	Reachable        bool          `json:"reachable"`
+	LatencyMs        float64       `json:"latencyMs"`
+	LatencySamples   []float64     `json:"latencySamples,omitempty"`
+	Attempts         int           `json:"attempts"`
+	TTL              int           `json:"ttl,omitempty"`
+	Hostnames        []string      `json:"hostnames,omitempty"`
+	MDNSNames        []string      `json:"mdnsNames,omitempty"`
+	NetBIOSNames     []string      `json:"netbiosNames,omitempty"`
+	LLMNRNames       []string      `json:"llmnrNames,omitempty"`
+	DeviceName       string        `json:"deviceName,omitempty"`
+	MacAddress       string        `json:"macAddress,omitempty"`
+	Manufacturer     string        `json:"manufacturer,omitempty"`
+	OSGuess          string        `json:"osGuess,omitempty"`
+	Services         []ServiceInfo `json:"services,omitempty"`
+	DiscoverySources []string      `json:"discoverySources,omitempty"`
+	InsightScore     int           `json:"insightScore,omitempty"`
+	Error            string        `json:"error,omitempty"`
 }
 
 // ServiceInfo describes an identified network service running on a host.

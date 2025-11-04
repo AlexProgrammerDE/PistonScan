@@ -45,34 +45,34 @@ func collectHostDetails(ctx context.Context, host string) Result {
 		defer wg.Done()
 		hostnames = lookupHostnames(infoCtx, host)
 	}()
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		mdnsNames = lookupMDNS(infoCtx, host)
 	}()
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		netbiosNames = lookupNetBIOS(infoCtx, host)
 	}()
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		llmnrNames = lookupLLMNR(infoCtx, host)
 	}()
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		mac = lookupMACAddress(infoCtx, host)
 	}()
-	
+
 	// Scan TCP and UDP services separately, then merge results
 	var tcpServices, udpServices []ServiceInfo
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -103,6 +103,8 @@ func collectHostDetails(ctx context.Context, host string) Result {
 	result.Services = services
 	result.DeviceName = deviceName
 	result.OSGuess = osGuess
+
+	enrichInsightMetadata(&result)
 
 	return result
 }

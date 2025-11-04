@@ -5,8 +5,10 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -54,48 +56,92 @@ var (
 )
 
 func scanServices(ctx context.Context, host string, ports []int) []ServiceInfo {
-	dialer := &net.Dialer{Timeout: 400 * time.Millisecond}
-	var services []ServiceInfo
-	for _, port := range ports {
-		select {
-		case <-ctx.Done():
-			return services
-		default:
-		}
-		addr := net.JoinHostPort(host, strconv.Itoa(port))
-		conn, err := dialer.DialContext(ctx, "tcp", addr)
-		if err != nil {
-			continue
-		}
-		_ = conn.SetDeadline(time.Now().Add(300 * time.Millisecond))
-		banner := readServiceBanner(conn, port)
-		
-		// Check for TLS certificate on HTTPS ports
-		var tlsInfo string
-		if port == 443 || port == 8443 {
-			tlsInfo = getTLSCertInfo(ctx, host, port)
-		}
-		
-		_ = conn.Close()
-
-		name := knownServiceNames[port]
-		if name == "" {
-			name = fmt.Sprintf("TCP %d", port)
-		}
-		services = append(services, ServiceInfo{
-			Port:        port,
-			Protocol:    "tcp",
-			Service:     name,
-			Banner:      banner,
-			TLSCertInfo: tlsInfo,
-		})
+	if len(ports) == 0 {
+		return nil
 	}
+
+	dialer := &net.Dialer{Timeout: 400 * time.Millisecond}
+	concurrency := min(len(ports), 32)
+	sem := make(chan struct{}, concurrency)
+	results := make(chan ServiceInfo, len(ports))
+
+	var wg sync.WaitGroup
+
+	for _, port := range ports {
+		port := port
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			addr := net.JoinHostPort(host, strconv.Itoa(port))
+			conn, err := dialer.DialContext(ctx, "tcp", addr)
+			if err != nil {
+				return
+			}
+			defer conn.Close()
+
+			_ = conn.SetDeadline(time.Now().Add(300 * time.Millisecond))
+			banner := readServiceBanner(conn, host, port)
+
+			// Check for TLS certificate on HTTPS ports
+			var tlsInfo string
+			if port == 443 || port == 8443 {
+				tlsInfo = getTLSCertInfo(ctx, host, port)
+			}
+
+			name := knownServiceNames[port]
+			if name == "" {
+				name = fmt.Sprintf("TCP %d", port)
+			}
+
+			service := ServiceInfo{
+				Port:        port,
+				Protocol:    "tcp",
+				Service:     name,
+				Banner:      banner,
+				TLSCertInfo: tlsInfo,
+			}
+
+			select {
+			case results <- service:
+			case <-ctx.Done():
+			}
+		}()
+	}
+
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	services := make([]ServiceInfo, 0, len(ports))
+	for svc := range results {
+		services = append(services, svc)
+	}
+
+	sort.Slice(services, func(i, j int) bool {
+		if services[i].Port == services[j].Port {
+			return services[i].Protocol < services[j].Protocol
+		}
+		return services[i].Port < services[j].Port
+	})
+
 	return services
 }
 
-func readServiceBanner(conn net.Conn, port int) string {
+func readServiceBanner(conn net.Conn, host string, port int) string {
 	if isHTTPPort(port) {
-		fmt.Fprintf(conn, "HEAD / HTTP/1.0\r\nHost: %s\r\n\r\n", conn.RemoteAddr().String())
+		fmt.Fprintf(conn, "HEAD / HTTP/1.0\r\nHost: %s\r\n\r\n", host)
 	}
 	reader := bufio.NewReader(conn)
 	line, err := reader.ReadString('\n')
