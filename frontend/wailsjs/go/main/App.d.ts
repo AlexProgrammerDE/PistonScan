@@ -20,7 +20,24 @@ export interface ScanResult {
     ip: string;
     reachable: boolean;
     latencyMs: number;
+    latencySamples?: number[];
+    attempts: number;
+    ttl?: number;
+    hostnames?: string[];
+    mdnsNames?: string[];
+    deviceName?: string;
+    macAddress?: string;
+    manufacturer?: string;
+    osGuess?: string;
+    services?: ServiceInfo[];
     error?: string;
+}
+
+export interface ServiceInfo {
+    port: number;
+    protocol: string;
+    service: string;
+    banner?: string;
 }
 
 export interface ScanSnapshot {

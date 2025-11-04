@@ -184,6 +184,27 @@ button:not(:disabled):active {
     font-size: 1.4rem;
 }
 
+.results-controls {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.filter-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.85rem;
+    color: #a7bddf;
+}
+
+.filter-toggle input {
+    width: 1rem;
+    height: 1rem;
+}
+
 .results-count {
     font-size: 0.95rem;
     color: #94aacc;
@@ -207,6 +228,32 @@ button:not(:disabled):active {
     padding: 0.75rem 1rem;
     text-align: left;
     border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.results-table td .device-name {
+    font-weight: 600;
+    color: #f1f5ff;
+}
+
+.results-table td .device-aliases {
+    font-size: 0.8rem;
+    color: #8ea7c9;
+    margin-top: 0.25rem;
+}
+
+.results-table td .meta {
+    font-size: 0.78rem;
+    color: #9fb6d3;
+}
+
+.results-table td .error-text {
+    color: #ffb3a5;
+    font-size: 0.85rem;
+}
+
+.mono {
+    font-family: 'Fira Code', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    letter-spacing: 0.02em;
 }
 
 .results-table thead {

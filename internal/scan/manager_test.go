@@ -1,6 +1,10 @@
 package scan
 
-import "testing"
+import (
+	"strings"
+	"testing"
+	"time"
+)
 
 func TestResolveTargetsSingleIP(t *testing.T) {
 	targets, err := resolveTargets("192.168.1.10")
@@ -46,5 +50,40 @@ func TestConfigValidate(t *testing.T) {
 		if err := c.Validate(); err == nil {
 			t.Fatalf("expected validation error for config %d", idx)
 		}
+	}
+}
+
+func TestDurationsToMillis(t *testing.T) {
+	values := []time.Duration{500 * time.Microsecond, 2 * time.Millisecond, 1500 * time.Millisecond}
+	got := durationsToMillis(values)
+	if len(got) != 3 {
+		t.Fatalf("expected 3 values, got %d", len(got))
+	}
+	if got[0] <= 0 || got[1] <= got[0] {
+		t.Fatalf("expected ascending millisecond values, got %v", got)
+	}
+}
+
+func TestNormaliseMAC(t *testing.T) {
+	input := "8c-85-90-12-34-56"
+	want := "8C:85:90:12:34:56"
+	if got := normaliseMAC(input); got != want {
+		t.Fatalf("expected %s, got %s", want, got)
+	}
+	if normaliseMAC("invalid") != "" {
+		t.Fatalf("expected empty result for invalid mac")
+	}
+}
+
+func TestGuessOS(t *testing.T) {
+	services := []ServiceInfo{{Port: 445, Protocol: "tcp", Service: "SMB"}}
+	if guess := guessOS(120, services); !strings.Contains(guess, "Windows") {
+		t.Fatalf("expected Windows guess, got %s", guess)
+	}
+	if guess := guessOS(40, []ServiceInfo{{Port: 7000, Protocol: "tcp", Service: "AirPlay"}}); !strings.Contains(guess, "Apple") {
+		t.Fatalf("expected Apple guess, got %s", guess)
+	}
+	if guess := guessOS(220, nil); guess != "Network Appliance" {
+		t.Fatalf("expected network appliance, got %s", guess)
 	}
 }
