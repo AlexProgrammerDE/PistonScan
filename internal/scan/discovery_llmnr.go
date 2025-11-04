@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"sort"
 	"strings"
 	"time"
 )
@@ -53,21 +54,67 @@ func lookupLLMNR(ctx context.Context, host string) []string {
 	if !ok {
 		deadline = time.Now().Add(1 * time.Second)
 	}
-	conn.SetDeadline(deadline)
+	_ = conn.SetDeadline(deadline)
 
 	// Try both multicast and unicast
 	_, _ = conn.WriteToUDP(query, llmnrAddr)
 	_, _ = conn.WriteToUDP(query, targetAddr)
 
-	// Read responses
-	response := make([]byte, 512)
-	n, _, err := conn.ReadFromUDP(response)
-	if err != nil {
+	deadlinePerRead := 200 * time.Millisecond
+	names := make(map[string]struct{})
+	buffer := make([]byte, 512)
+
+	for {
+		if ctx.Err() != nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			break
+		}
+
+		readDeadline := time.Now().Add(deadlinePerRead)
+		if readDeadline.After(deadline) {
+			readDeadline = deadline
+		}
+		if err := conn.SetReadDeadline(readDeadline); err != nil {
+			break
+		}
+
+		n, _, err := conn.ReadFromUDP(buffer)
+		if err != nil {
+			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+				// Continue waiting until the global deadline expires
+				continue
+			}
+			break
+		}
+		if n == 0 {
+			continue
+		}
+
+		for _, name := range parseDNSResponse(buffer[:n]) {
+			if name == "" {
+				continue
+			}
+			names[name] = struct{}{}
+		}
+
+		if len(names) >= 5 {
+			// Sufficient responses collected
+			break
+		}
+	}
+
+	if len(names) == 0 {
 		return nil
 	}
 
-	// Parse DNS response
-	return parseDNSResponse(response[:n])
+	out := make([]string, 0, len(names))
+	for key := range names {
+		out = append(out, key)
+	}
+	sort.Strings(out)
+	return out
 }
 
 func buildDNSQuery(name string, queryType uint16) []byte {

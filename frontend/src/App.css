@@ -186,8 +186,8 @@ button:not(:disabled):active {
 
 .results-controls {
     display: flex;
-    align-items: center;
-    gap: 1rem;
+    align-items: flex-end;
+    gap: 1.2rem;
     flex-wrap: wrap;
     justify-content: flex-end;
 }
@@ -208,6 +208,73 @@ button:not(:disabled):active {
 .results-count {
     font-size: 0.95rem;
     color: #94aacc;
+}
+
+.insight-filter {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    min-width: 220px;
+}
+
+.insight-filter label {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    color: #8aa6ce;
+    letter-spacing: 0.05em;
+}
+
+.insight-filter input[type='range'] {
+    accent-color: #5ac8ff;
+}
+
+.insight-presets {
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+}
+
+.preset {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #dce6ff;
+    font-size: 0.75rem;
+    padding: 0.3rem 0.75rem;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.preset.active {
+    background: linear-gradient(135deg, rgba(46, 114, 255, 0.7), rgba(90, 200, 255, 0.7));
+    border-color: rgba(127, 183, 255, 0.6);
+}
+
+.preset:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.sort-control {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    min-width: 150px;
+}
+
+.sort-control label {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    color: #8aa6ce;
+    letter-spacing: 0.05em;
+}
+
+.sort-control select {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 10px;
+    padding: 0.45rem 0.6rem;
+    color: #f2f6ff;
 }
 
 .table-wrapper {
@@ -251,6 +318,11 @@ button:not(:disabled):active {
     font-size: 0.85rem;
 }
 
+.results-table th:first-child,
+.results-table td:first-child {
+    width: 80px;
+}
+
 .mono {
     font-family: 'Fira Code', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
     letter-spacing: 0.02em;
@@ -288,6 +360,220 @@ button:not(:disabled):active {
     color: #ffb3a5;
 }
 
+.expand-toggle {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #d7e8ff;
+    border-radius: 999px;
+    padding: 0.3rem 0.75rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.expand-toggle:hover {
+    background: rgba(127, 183, 255, 0.2);
+    border-color: rgba(127, 183, 255, 0.6);
+}
+
+.insight-score-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    min-width: 150px;
+}
+
+.score-header {
+    display: flex;
+    align-items: baseline;
+    gap: 0.35rem;
+}
+
+.score-value {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: #f4f7ff;
+}
+
+.score-label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #8aa6ce;
+}
+
+.score-bar {
+    height: 6px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+}
+
+.score-bar div {
+    height: 100%;
+    background: linear-gradient(135deg, #2e72ff, #5ac8ff);
+    transition: width 0.3s ease;
+}
+
+.score-sources {
+    font-size: 0.75rem;
+    color: #9fb6d3;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.expanded-row td {
+    background: rgba(12, 22, 36, 0.9);
+    padding: 1.5rem;
+}
+
+.detail-grid {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    margin-bottom: 1rem;
+}
+
+.detail-grid.two-column {
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.detail-card {
+    background: rgba(18, 28, 46, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    padding: 1rem 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+
+.detail-card.full-width {
+    grid-column: 1 / -1;
+}
+
+.detail-card h3 {
+    margin: 0;
+    font-size: 1rem;
+    color: #c4d9ff;
+}
+
+.detail-card ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    font-size: 0.9rem;
+}
+
+.detail-card ul li span {
+    color: #8aa6ce;
+    margin-right: 0.4rem;
+}
+
+.detail-card dl {
+    margin: 0;
+    display: grid;
+    grid-template-columns: 80px 1fr;
+    gap: 0.3rem 0.6rem;
+    font-size: 0.9rem;
+}
+
+.detail-card dl dt {
+    color: #8aa6ce;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+}
+
+.detail-card dl dd {
+    margin: 0;
+    color: #e4ecff;
+}
+
+.latency-samples-wrapper {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+.latency-chip {
+    background: rgba(90, 200, 255, 0.18);
+    color: #bce6ff;
+    border-radius: 999px;
+    padding: 0.3rem 0.7rem;
+    font-size: 0.75rem;
+}
+
+.source-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+.source-badge {
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 999px;
+    padding: 0.35rem 0.7rem;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #dbe6ff;
+}
+
+.service-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+}
+
+.service-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-weight: 600;
+    color: #f1f6ff;
+}
+
+.service-banner {
+    font-size: 0.8rem;
+    color: #a7bddf;
+    margin-top: 0.25rem;
+    word-break: break-word;
+}
+
+.service-banner.tls {
+    color: #aefdd8;
+}
+
+.tls-chip {
+    background: rgba(155, 255, 199, 0.28);
+    color: #e6ffef;
+    border-radius: 999px;
+    padding: 0.2rem 0.6rem;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.raw-json {
+    margin: 0;
+    padding: 1rem;
+    background: rgba(0, 0, 0, 0.35);
+    border-radius: 12px;
+    font-family: 'Fira Code', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    font-size: 0.75rem;
+    color: #b8d0ff;
+    max-height: 260px;
+    overflow: auto;
+}
+
 .empty-state {
     text-align: center;
     padding: 2rem 0;
@@ -322,5 +608,16 @@ button:not(:disabled):active {
 
     .summary-actions {
         margin-left: 0;
+    }
+
+    .results-controls {
+        align-items: stretch;
+        justify-content: flex-start;
+    }
+
+    .insight-filter,
+    .sort-control {
+        min-width: unset;
+        width: 100%;
     }
 }

@@ -309,6 +309,42 @@ func TestResultStructWithNewFields(t *testing.T) {
 	}
 }
 
+func TestEnrichInsightMetadata(t *testing.T) {
+	result := &Result{
+		Reachable:      true,
+		LatencySamples: []float64{10},
+		TTL:            64,
+		Hostnames:      []string{"example"},
+		MDNSNames:      []string{"example.local"},
+		NetBIOSNames:   []string{"EXAMPLE"},
+		LLMNRNames:     []string{"example-llmnr"},
+		DeviceName:     "Device",
+		MacAddress:     "8C:85:90:12:34:56",
+		Manufacturer:   "Acme Corp",
+		OSGuess:        "Linux / Unix",
+		Services: []ServiceInfo{
+			{Port: 22, Protocol: "tcp", Service: "SSH"},
+			{Port: 443, Protocol: "tcp", Service: "HTTPS", TLSCertInfo: "CN=example"},
+		},
+	}
+
+	enrichInsightMetadata(result)
+
+	if result.InsightScore != 19 {
+		t.Fatalf("unexpected insight score: got %d", result.InsightScore)
+	}
+
+	expectedSources := []string{"arp", "dns", "fingerprint", "icmp", "llmnr", "mdns", "netbios", "oui", "tcp", "tls"}
+	if len(result.DiscoverySources) != len(expectedSources) {
+		t.Fatalf("unexpected number of sources: %v", result.DiscoverySources)
+	}
+	for idx, source := range expectedSources {
+		if result.DiscoverySources[idx] != source {
+			t.Fatalf("expected source %s at index %d, got %s", source, idx, result.DiscoverySources[idx])
+		}
+	}
+}
+
 func TestLookupMDNSNoChannelPanic(t *testing.T) {
 	// Test that lookupMDNS doesn't panic when the context expires
 	// This tests the fix for the "close of closed channel" panic
@@ -356,7 +392,7 @@ func TestLookupMDNSConcurrentCalls(t *testing.T) {
 func TestCollectHostDetailsRunsAllChecks(t *testing.T) {
 	// Test that collectHostDetails runs all checks in parallel
 	// This validates the fix for "too few checks being run"
-	
+
 	// We'll use localhost as it should be reachable on all systems
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
@@ -397,10 +433,10 @@ func TestCollectHostDetailsRunsAllChecks(t *testing.T) {
 	// If checks were running sequentially with timeouts, this would take much longer
 	// With parallel execution, it should complete within the 4-second info timeout
 	// plus ping time
-	
+
 	t.Logf("Result: IP=%s, Reachable=%v, Hostnames=%v, MDNSNames=%v, NetBIOSNames=%v, LLMNRNames=%v, MAC=%s, DeviceName=%s, OSGuess=%s, Services=%d",
-		result.IP, result.Reachable, result.Hostnames, result.MDNSNames, 
-		result.NetBIOSNames, result.LLMNRNames, result.MacAddress, 
+		result.IP, result.Reachable, result.Hostnames, result.MDNSNames,
+		result.NetBIOSNames, result.LLMNRNames, result.MacAddress,
 		result.DeviceName, result.OSGuess, len(result.Services))
 }
 
@@ -412,7 +448,7 @@ func TestServiceInfoStructWithTLS(t *testing.T) {
 		Banner:      "Server: nginx",
 		TLSCertInfo: "CN=example.com; Expires=2025-12-31",
 	}
-	
+
 	if svc.Port != 443 {
 		t.Errorf("expected port 443, got %d", svc.Port)
 	}
@@ -423,16 +459,16 @@ func TestServiceInfoStructWithTLS(t *testing.T) {
 
 func TestBuildSNMPGetRequest(t *testing.T) {
 	packet := buildSNMPGetRequest("public")
-	
+
 	if len(packet) < 10 {
 		t.Error("SNMP packet too short")
 	}
-	
+
 	// Check SEQUENCE tag
 	if packet[0] != 0x30 {
 		t.Errorf("expected SEQUENCE tag 0x30, got 0x%02x", packet[0])
 	}
-	
+
 	// Check that community string "public" is somewhere in the packet
 	packetStr := string(packet)
 	if !strings.Contains(packetStr, "public") {
@@ -443,11 +479,11 @@ func TestBuildSNMPGetRequest(t *testing.T) {
 func TestProbeUDPPort(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	
+
 	// Test with localhost on a port that's unlikely to be open
 	// This tests that the function doesn't crash and returns gracefully
 	result := probeUDPPort(ctx, "127.0.0.1", 9999)
-	
+
 	// We don't care if it's open or not, just that it doesn't crash
 	t.Logf("UDP probe result for port 9999: %v", result)
 }
@@ -455,13 +491,13 @@ func TestProbeUDPPort(t *testing.T) {
 func TestScanUDPServices(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	
+
 	// Test with localhost on a small set of ports
 	services := scanUDPServices(ctx, "127.0.0.1", []int{53, 161})
-	
+
 	// Should return a list (possibly empty if no services are running)
 	t.Logf("Found %d UDP services", len(services))
-	
+
 	for _, svc := range services {
 		if svc.Protocol != "udp" {
 			t.Errorf("expected protocol 'udp', got '%s'", svc.Protocol)
@@ -472,16 +508,16 @@ func TestScanUDPServices(t *testing.T) {
 func TestGetTLSCertInfo(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	
+
 	// Test with a well-known HTTPS site
 	info := getTLSCertInfo(ctx, "www.google.com", 443)
-	
+
 	// If we got info, it should contain some certificate details
 	if info != "" {
 		t.Logf("TLS cert info: %s", info)
 		// Check that it contains at least one expected field
-		hasExpectedField := strings.Contains(info, "CN=") || 
-			strings.Contains(info, "Expires=") || 
+		hasExpectedField := strings.Contains(info, "CN=") ||
+			strings.Contains(info, "Expires=") ||
 			strings.Contains(info, "Issuer=")
 		if !hasExpectedField {
 			t.Errorf("TLS cert info doesn't contain expected fields: %s", info)
@@ -494,10 +530,10 @@ func TestGetTLSCertInfo(t *testing.T) {
 func TestProbeSSDP(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	
+
 	// Test SSDP probe - may or may not find a device
 	result := probeSSDP(ctx, "192.168.1.1")
-	
+
 	// We don't expect this to necessarily succeed, just to not crash
 	t.Logf("SSDP probe result: %s", result)
 }
@@ -505,10 +541,10 @@ func TestProbeSSDP(t *testing.T) {
 func TestProbeSNMP(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	
+
 	// Test SNMP probe - unlikely to succeed without a real SNMP agent
 	result := probeSNMP(ctx, "127.0.0.1", 161)
-	
+
 	// We don't expect this to succeed, just to not crash
 	t.Logf("SNMP probe result: %s", result)
 }
@@ -522,7 +558,7 @@ func TestMinFunction(t *testing.T) {
 		{10, 10, 10},
 		{0, 100, 0},
 	}
-	
+
 	for _, tt := range tests {
 		result := min(tt.a, tt.b)
 		if result != tt.expected {
@@ -530,4 +566,3 @@ func TestMinFunction(t *testing.T) {
 		}
 	}
 }
-

@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -21,20 +23,41 @@ var (
 
 // scanUDPServices probes common UDP ports for service detection
 func scanUDPServices(ctx context.Context, host string, ports []int) []ServiceInfo {
-	var services []ServiceInfo
+	if len(ports) == 0 {
+		return nil
+	}
+
+	concurrency := min(len(ports), 16)
+	sem := make(chan struct{}, concurrency)
+	results := make(chan ServiceInfo, len(ports))
+
+	var wg sync.WaitGroup
+
 	for _, port := range ports {
-		select {
-		case <-ctx.Done():
-			return services
-		default:
-		}
-		
-		if probeUDPPort(ctx, host, port) {
+		port := port
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			if !probeUDPPort(ctx, host, port) {
+				return
+			}
+
 			name := knownServiceNames[port]
 			if name == "" {
 				name = fmt.Sprintf("UDP %d", port)
 			}
-			
+
 			var banner string
 			// Try specific protocol probes
 			switch port {
@@ -43,29 +66,58 @@ func scanUDPServices(ctx context.Context, host string, ports []int) []ServiceInf
 			case 1900:
 				banner = probeSSDP(ctx, host)
 			}
-			
-			services = append(services, ServiceInfo{
+
+			service := ServiceInfo{
 				Port:     port,
 				Protocol: "udp",
 				Service:  name,
 				Banner:   banner,
-			})
-		}
+			}
+
+			select {
+			case results <- service:
+			case <-ctx.Done():
+			}
+		}()
 	}
+
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	services := make([]ServiceInfo, 0, len(ports))
+	for svc := range results {
+		services = append(services, svc)
+	}
+
+	sort.Slice(services, func(i, j int) bool {
+		if services[i].Port == services[j].Port {
+			return services[i].Protocol < services[j].Protocol
+		}
+		return services[i].Port < services[j].Port
+	})
+
 	return services
 }
 
 // probeUDPPort checks if a UDP port is open/responsive
 func probeUDPPort(ctx context.Context, host string, port int) bool {
+	dialer := &net.Dialer{Timeout: 300 * time.Millisecond}
 	addr := net.JoinHostPort(host, strconv.Itoa(port))
-	conn, err := net.DialTimeout("udp", addr, 300*time.Millisecond)
+
+	conn, err := dialer.DialContext(ctx, "udp", addr)
 	if err != nil {
 		return false
 	}
 	defer conn.Close()
-	
-	_ = conn.SetDeadline(time.Now().Add(200 * time.Millisecond))
-	
+
+	readDeadline := time.Now().Add(200 * time.Millisecond)
+	if deadline, ok := ctx.Deadline(); ok && deadline.Before(readDeadline) {
+		readDeadline = deadline
+	}
+	_ = conn.SetDeadline(readDeadline)
+
 	// Send a probe packet (empty or protocol-specific)
 	var probe []byte
 	switch port {
@@ -86,13 +138,16 @@ func probeUDPPort(ctx context.Context, host string, port int) bool {
 		// Generic probe
 		probe = []byte{0x00}
 	}
-	
+
 	_, _ = conn.Write(probe)
-	
+
 	// Try to read response
 	response := make([]byte, 512)
 	n, err := conn.Read(response)
-	
+	if err != nil {
+		return false
+	}
+
 	// Only consider the port open if we received data
 	return n > 0
 }
@@ -100,8 +155,11 @@ func probeUDPPort(ctx context.Context, host string, port int) bool {
 // probeSNMP attempts SNMP v1/v2c queries with common community strings
 func probeSNMP(ctx context.Context, host string, port int) string {
 	communityStrings := []string{"public", "private"}
-	
+
 	for _, community := range communityStrings {
+		if ctx.Err() != nil {
+			return ""
+		}
 		if response := trySNMPQuery(ctx, host, port, community); response != "" {
 			return response
 		}
@@ -112,34 +170,39 @@ func probeSNMP(ctx context.Context, host string, port int) string {
 // trySNMPQuery sends an SNMP GET request for sysDescr (1.3.6.1.2.1.1.1.0)
 func trySNMPQuery(ctx context.Context, host string, port int, community string) string {
 	addr := net.JoinHostPort(host, strconv.Itoa(port))
-	conn, err := net.DialTimeout("udp", addr, 500*time.Millisecond)
+	dialer := &net.Dialer{Timeout: 500 * time.Millisecond}
+	conn, err := dialer.DialContext(ctx, "udp", addr)
 	if err != nil {
 		return ""
 	}
 	defer conn.Close()
-	
-	_ = conn.SetDeadline(time.Now().Add(1 * time.Second))
-	
+
+	readDeadline := time.Now().Add(1 * time.Second)
+	if deadline, ok := ctx.Deadline(); ok && deadline.Before(readDeadline) {
+		readDeadline = deadline
+	}
+	_ = conn.SetDeadline(readDeadline)
+
 	// Build SNMP v2c GET request for sysDescr (simplified)
 	// This is a basic implementation - full SNMP encoding is complex
 	packet := buildSNMPGetRequest(community)
-	
+
 	_, err = conn.Write(packet)
 	if err != nil {
 		return ""
 	}
-	
+
 	response := make([]byte, 1500)
 	n, err := conn.Read(response)
 	if err != nil || n < 10 {
 		return ""
 	}
-	
+
 	// Parse basic SNMP response
 	if response[0] == 0x30 { // SEQUENCE tag
 		return fmt.Sprintf("SNMP (community=%s)", community)
 	}
-	
+
 	return ""
 }
 
@@ -147,16 +210,16 @@ func trySNMPQuery(ctx context.Context, host string, port int, community string) 
 func buildSNMPGetRequest(community string) []byte {
 	// Simplified SNMP GET request for OID 1.3.6.1.2.1.1.1.0 (sysDescr)
 	// In a production system, you'd use a proper SNMP library
-	
+
 	// Request ID
 	requestID := []byte{0x02, 0x01, 0x01}
-	
+
 	// Error status (0)
 	errorStatus := []byte{0x02, 0x01, 0x00}
-	
+
 	// Error index (0)
 	errorIndex := []byte{0x02, 0x01, 0x00}
-	
+
 	// OID 1.3.6.1.2.1.1.1.0
 	oid := []byte{
 		0x30, 0x0d, // SEQUENCE
@@ -164,30 +227,30 @@ func buildSNMPGetRequest(community string) []byte {
 		0x2b, 0x06, 0x01, 0x02, 0x01, 0x01, 0x01, 0x00, // 1.3.6.1.2.1.1.1.0
 		0x05, 0x00, // NULL value
 	}
-	
+
 	// Varbind list
 	varbindList := append([]byte{0x30, byte(len(oid))}, oid...)
-	
+
 	// PDU
 	pduData := append(requestID, errorStatus...)
 	pduData = append(pduData, errorIndex...)
 	pduData = append(pduData, varbindList...)
 	pdu := append([]byte{0xa0, byte(len(pduData))}, pduData...)
-	
+
 	// Community string
 	communityBytes := []byte(community)
 	communityField := append([]byte{0x04, byte(len(communityBytes))}, communityBytes...)
-	
+
 	// Version (v2c = 1)
 	version := []byte{0x02, 0x01, 0x01}
-	
+
 	// Build complete message
 	message := append(version, communityField...)
 	message = append(message, pdu...)
-	
+
 	// Wrap in SEQUENCE
 	packet := append([]byte{0x30, byte(len(message))}, message...)
-	
+
 	return packet
 }
 
@@ -200,33 +263,38 @@ func probeSSDP(ctx context.Context, host string) string {
 		"MX: 1\r\n" +
 		"ST: ssdp:all\r\n" +
 		"\r\n"
-	
+
 	addr := net.JoinHostPort(host, "1900")
-	conn, err := net.DialTimeout("udp", addr, 500*time.Millisecond)
+	dialer := &net.Dialer{Timeout: 500 * time.Millisecond}
+	conn, err := dialer.DialContext(ctx, "udp", addr)
 	if err != nil {
 		return ""
 	}
 	defer conn.Close()
-	
-	_ = conn.SetDeadline(time.Now().Add(1 * time.Second))
-	
+
+	readDeadline := time.Now().Add(1 * time.Second)
+	if deadline, ok := ctx.Deadline(); ok && deadline.Before(readDeadline) {
+		readDeadline = deadline
+	}
+	_ = conn.SetDeadline(readDeadline)
+
 	_, err = conn.Write([]byte(searchMsg))
 	if err != nil {
 		return ""
 	}
-	
+
 	response := make([]byte, 2048)
 	n, err := conn.Read(response)
 	if err != nil || n == 0 {
 		return ""
 	}
-	
+
 	responseStr := string(response[:n])
-	
+
 	// Extract device info from response
-	if strings.Contains(responseStr, "HTTP/1.1 200 OK") || 
-	   strings.Contains(responseStr, "SERVER:") ||
-	   strings.Contains(responseStr, "LOCATION:") {
+	if strings.Contains(responseStr, "HTTP/1.1 200 OK") ||
+		strings.Contains(responseStr, "SERVER:") ||
+		strings.Contains(responseStr, "LOCATION:") {
 		// Parse server or device type
 		lines := strings.Split(responseStr, "\r\n")
 		for _, line := range lines {
@@ -239,6 +307,6 @@ func probeSSDP(ctx context.Context, host string) string {
 		}
 		return "UPnP Device"
 	}
-	
+
 	return ""
 }

@@ -39,7 +39,7 @@ func lookupMDNS(ctx context.Context, host string) []string {
 	// Create a channel for internal use that won't be closed manually
 	internalEntries := make(chan *zeroconf.ServiceEntry, 10)
 
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	queryCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
 	resultsMu := sync.Mutex{}
@@ -52,11 +52,36 @@ func lookupMDNS(ctx context.Context, host string) []string {
 		if entry.Instance != "" {
 			results[entry.Instance] = struct{}{}
 		}
+		if entry.Service != "" {
+			service := strings.TrimSuffix(entry.Service, ".")
+			if service != "" {
+				results[service] = struct{}{}
+			}
+		}
 		if entry.HostName != "" {
 			// Clean up hostname (remove trailing dot)
 			hostname := strings.TrimSuffix(entry.HostName, ".")
 			if hostname != "" {
 				results[hostname] = struct{}{}
+			}
+		}
+		for _, txt := range entry.Text {
+			if txt == "" {
+				continue
+			}
+			if strings.Contains(txt, "=") {
+				parts := strings.SplitN(txt, "=", 2)
+				key := strings.ToLower(strings.TrimSpace(parts[0]))
+				value := strings.TrimSpace(parts[1])
+				if value == "" {
+					continue
+				}
+				switch key {
+				case "fn", "id", "model", "name", "md":
+					results[value] = struct{}{}
+				}
+			} else {
+				results[txt] = struct{}{}
 			}
 		}
 	}
@@ -120,49 +145,41 @@ func lookupMDNS(ctx context.Context, host string) []string {
 
 	// Use a WaitGroup to track active Browse operations
 	var browseWg sync.WaitGroup
-	
-	// Track if we've already closed the channel
-	var closeOnce sync.Once
-	
+	var forwardWg sync.WaitGroup
+
 	// Create a wrapper channel for each Browse call to avoid the race condition
 	// where multiple Browse goroutines try to close the same channel
 	for _, serviceType := range serviceTypes {
 		select {
-		case <-ctx.Done():
+		case <-queryCtx.Done():
 			break
 		default:
 			browseWg.Add(1)
-			// Create a unique channel for this Browse call
-			serviceEntries := make(chan *zeroconf.ServiceEntry, 10)
-			
-			go func(entries chan *zeroconf.ServiceEntry) {
+			entries := make(chan *zeroconf.ServiceEntry, 10)
+
+			go func(service string, ch chan *zeroconf.ServiceEntry) {
 				defer browseWg.Done()
-				// Forward entries from this service-specific channel to our internal channel
-				for entry := range entries {
-					select {
-					case internalEntries <- entry:
-					case <-ctx.Done():
-						return
-					}
+				_ = resolver.Browse(queryCtx, service, "local.", ch)
+			}(serviceType, entries)
+
+			forwardWg.Add(1)
+			go func(ch chan *zeroconf.ServiceEntry) {
+				defer forwardWg.Done()
+				for entry := range ch {
+					internalEntries <- entry
 				}
-			}(serviceEntries)
-			
-			// Browse for this service type, ignore errors
-			_ = resolver.Browse(ctx, serviceType, "local.", serviceEntries)
+			}(entries)
 		}
 	}
 
-	// Wait for context to expire first
-	<-ctx.Done()
-	
-	// Wait for all Browse operations to complete and their channels to close
-	browseWg.Wait()
-	
-	// Now it's safe to close our internal channel since all Browse operations are done
-	closeOnce.Do(func() {
+	go func() {
+		browseWg.Wait()
+		forwardWg.Wait()
 		close(internalEntries)
-	})
-	
+	}()
+
+	<-queryCtx.Done()
+
 	// Wait for the result collector to finish
 	<-done
 
