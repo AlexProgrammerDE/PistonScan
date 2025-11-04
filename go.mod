@@ -3,6 +3,7 @@ module pistonscan
 go 1.23
 
 require (
+	github.com/endobit/oui v0.5.0
 	github.com/go-ping/ping v1.2.0
 	github.com/grandcat/zeroconf v1.0.0
 	github.com/wailsapp/wails/v2 v2.10.2

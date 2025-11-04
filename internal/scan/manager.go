@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/endobit/oui"
 	ping "github.com/go-ping/ping"
 	"github.com/grandcat/zeroconf"
 )
@@ -894,25 +895,25 @@ func parseNetBIOSResponse(data []byte) []string {
 
 	// Use map for efficient duplicate detection
 	nameSet := make(map[string]struct{})
-	
+
 	for i := 0; i < numNames && offset+netbiosNameEntrySize <= len(data); i++ {
 		// Extract name (15 bytes)
 		nameBytes := data[offset : offset+netbiosNameFieldSize]
 		name := strings.TrimSpace(string(nameBytes))
-		
+
 		// Name type (1 byte) - we want unique names (type 0x00) and workstation names (type 0x00, 0x03, 0x20)
 		nameType := data[offset+netbiosNameFieldSize]
-		
+
 		// Flags (2 bytes) - bit 15 indicates if name is active
 		flags := uint16(data[offset+netbiosNameFieldSize+1])<<8 | uint16(data[offset+netbiosNameFieldSize+2])
-		
+
 		// Only add active unique names (not group names)
 		if name != "" && flags&0x8000 != 0 && (nameType == 0x00 || nameType == 0x03 || nameType == 0x20) {
 			nameSet[name] = struct{}{}
 		}
-		
+
 		offset += netbiosNameEntrySize
-		
+
 		// Don't process more than the reported data length
 		if offset-netbiosMinResponseSize >= dataLen {
 			break
@@ -922,7 +923,7 @@ func parseNetBIOSResponse(data []byte) []string {
 	if len(nameSet) == 0 {
 		return nil
 	}
-	
+
 	// Convert map to sorted slice
 	names := make([]string, 0, len(nameSet))
 	for name := range nameSet {
@@ -940,7 +941,7 @@ func lookupLLMNR(ctx context.Context, host string) []string {
 	if ip == nil {
 		return nil
 	}
-	
+
 	ipv4 := ip.To4()
 	if ipv4 == nil {
 		return nil // Only support IPv4 for now
@@ -949,7 +950,7 @@ func lookupLLMNR(ctx context.Context, host string) []string {
 	// Build PTR query for reverse lookup (IP to name)
 	// Format: x.x.x.x.in-addr.arpa
 	arpaName := fmt.Sprintf("%d.%d.%d.%d.in-addr.arpa", ipv4[3], ipv4[2], ipv4[1], ipv4[0])
-	
+
 	// Build DNS query for LLMNR
 	query := buildDNSQuery(arpaName, 12) // Type 12 = PTR
 
@@ -1038,7 +1039,7 @@ func parseDNSResponse(data []byte) []string {
 
 	// Skip header (12 bytes) and question section
 	offset := 12
-	
+
 	// Skip question name
 	for offset < len(data) && data[offset] != 0 {
 		if data[offset]&0xC0 == 0xC0 {
@@ -1057,7 +1058,7 @@ func parseDNSResponse(data []byte) []string {
 	offset += 4 // Skip type and class
 
 	var names []string
-	
+
 	// Parse answers
 	for i := 0; i < answerCount && offset < len(data); i++ {
 		// Skip name (may be compressed)
@@ -1199,12 +1200,8 @@ func lookupManufacturer(mac string) string {
 	if mac == "" {
 		return ""
 	}
-	mac = strings.ToUpper(strings.ReplaceAll(mac, ":", ""))
-	if len(mac) < 6 {
-		return ""
-	}
-	prefix := mac[:6]
-	if vendor, ok := ouiVendors[prefix]; ok {
+	vendor := oui.Vendor(strings.ToLower(mac))
+	if vendor != "" {
 		return vendor
 	}
 	return "Unknown"
