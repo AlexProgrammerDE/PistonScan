@@ -39,6 +39,7 @@ export namespace scan {
 	    protocol: string;
 	    service: string;
 	    banner?: string;
+	    tlsCertInfo?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new ServiceInfo(source);
@@ -50,6 +51,7 @@ export namespace scan {
 	        this.protocol = source["protocol"];
 	        this.service = source["service"];
 	        this.banner = source["banner"];
+	        this.tlsCertInfo = source["tlsCertInfo"];
 	    }
 	}
 	export class Result {
