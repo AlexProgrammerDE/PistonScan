@@ -1,6 +1,6 @@
 package gui
 
-import _ "embed"
+import "embed"
 
-//go:embed static/index.html
-var indexHTML string
+//go:embed static
+var assets embed.FS

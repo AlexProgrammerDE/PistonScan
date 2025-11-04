@@ -4,6 +4,7 @@
 <meta charset="utf-8" />
 <title>PistonScan</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<script defer src="wails://wails/js"></script>
 <style>
 body {
   font-family: Arial, sans-serif;
@@ -159,6 +160,23 @@ let currentState = "Idle";
 let expectedTargets = 0;
 let results = [];
 
+function getBackend() {
+  return window.backend && window.backend.App;
+}
+
+function extractError(err, fallback) {
+  if (!err) {
+    return fallback;
+  }
+  if (typeof err === "string") {
+    return err;
+  }
+  if (err.message) {
+    return err.message;
+  }
+  return fallback;
+}
+
 function setError(message) {
   errorEl.textContent = message || "";
 }
@@ -179,57 +197,104 @@ function renderResults() {
   resultsBody.innerHTML = "";
   for (const row of results) {
     const tr = document.createElement("tr");
+    const latency = row.latency_ms ?? row.latencyMS ?? 0;
+    const checkedAt = row.checked_at ?? row.checkedAt ?? "";
+    const reachable = row.reachable ?? false;
+    const errorText = row.error ?? "";
     tr.innerHTML = `
-      <td>${row.ip}</td>
-      <td>${row.reachable ? "Yes" : "No"}</td>
-      <td>${row.latency_ms}</td>
-      <td>${row.checked_at}</td>
-      <td>${row.error || ""}</td>`;
+      <td>${row.ip ?? row.IP ?? ""}</td>
+      <td>${reachable ? "Yes" : "No"}</td>
+      <td>${latency}</td>
+      <td>${checkedAt}</td>
+      <td>${errorText}</td>`;
     resultsBody.appendChild(tr);
   }
 }
 
 async function startScan() {
   setError("");
+  const backend = getBackend();
+  if (!backend) {
+    setError("Application is still starting...");
+    return;
+  }
   const payload = {
     subnet: document.getElementById("subnet").value,
     threads: parseInt(document.getElementById("threads").value, 10),
     delay_ms: parseInt(document.getElementById("delay").value, 10)
   };
   try {
-    const response = await fetch("/start", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify(payload)
-    });
-    if (!response.ok) {
-      const text = await response.text();
-      setError(text || "Unable to start scan");
-    }
+    await backend.Start(payload);
   } catch (err) {
-    setError("Failed to contact server");
+    setError(extractError(err, "Unable to start scan"));
   }
 }
 
-async function sendCommand(path) {
+async function pauseScan() {
   setError("");
-  try {
-    const response = await fetch(path, {method: "POST"});
-    if (!response.ok) {
-      const text = await response.text();
-      setError(text || "Operation failed");
-    }
-  } catch (err) {
-    setError("Failed to contact server");
-  }
-}
-
-function exportResults() {
-  if (results.length === 0) {
-    setError("No scan data to export");
+  const backend = getBackend();
+  if (!backend) {
+    setError("Application is still starting...");
     return;
   }
-  window.open("/export", "_blank");
+  try {
+    await backend.Pause();
+  } catch (err) {
+    setError(extractError(err, "Operation failed"));
+  }
+}
+
+async function resumeScan() {
+  setError("");
+  const backend = getBackend();
+  if (!backend) {
+    setError("Application is still starting...");
+    return;
+  }
+  try {
+    await backend.Resume();
+  } catch (err) {
+    setError(extractError(err, "Operation failed"));
+  }
+}
+
+async function cancelScan() {
+  setError("");
+  const backend = getBackend();
+  if (!backend) {
+    setError("Application is still starting...");
+    return;
+  }
+  try {
+    await backend.Cancel();
+  } catch (err) {
+    setError(extractError(err, "Operation failed"));
+  }
+}
+
+async function exportResults() {
+  setError("");
+  const backend = getBackend();
+  if (!backend) {
+    setError("Application is still starting...");
+    return;
+  }
+  try {
+    const data = await backend.Export();
+    if (!data) {
+      setError("No scan data to export");
+      return;
+    }
+    const blob = new Blob([data], {type: "application/json"});
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "scan.json";
+    link.click();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    setError(extractError(err, "Export failed"));
+  }
 }
 
 function importResults(event) {
@@ -238,46 +303,78 @@ function importResults(event) {
   if (!file) {
     return;
   }
-  const form = new FormData();
-  form.append("file", file);
-  fetch("/import", {method: "POST", body: form}).then(response => {
-    if (!response.ok) {
-      response.text().then(text => setError(text || "Import failed"));
+  const backend = getBackend();
+  if (!backend) {
+    setError("Application is still starting...");
+    event.target.value = "";
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = async () => {
+    try {
+      await backend.Import(reader.result);
+    } catch (err) {
+      setError(extractError(err, "Import failed"));
     }
-  }).catch(() => setError("Import failed"));
+  };
+  reader.onerror = () => {
+    setError("Import failed");
+  };
+  reader.readAsText(file);
   event.target.value = "";
 }
 
-function connectEvents() {
-  const source = new EventSource("/events");
-  source.onmessage = (event) => {
-    try {
-      const data = JSON.parse(event.data);
-      if (data.type === "snapshot") {
-        currentState = data.state || "Idle";
-        expectedTargets = data.expected || 0;
-        results = data.results || [];
-        renderResults();
-        updateStatus();
-      }
-    } catch (err) {
-      console.error("Failed to parse event", err);
-    }
-  };
-  source.onerror = () => {
-    source.close();
-    setTimeout(connectEvents, 2000);
-  };
+function handleSnapshot(data) {
+  if (!data || data.type !== "snapshot") {
+    return;
+  }
+  currentState = data.state || "Idle";
+  expectedTargets = data.expected || 0;
+  results = data.results || [];
+  renderResults();
+  updateStatus();
+}
+
+function subscribeEvents() {
+  if (!window.runtime || typeof window.runtime.EventsOn !== "function") {
+    return;
+  }
+  window.runtime.EventsOn("snapshot", handleSnapshot);
+}
+
+async function refreshSnapshot() {
+  const backend = getBackend();
+  if (!backend) {
+    return;
+  }
+  try {
+    const snapshot = await backend.Snapshot();
+    handleSnapshot(snapshot);
+  } catch (err) {
+    console.error("Failed to fetch snapshot", err);
+  }
+}
+
+function ensureRuntimeReady(callback) {
+  if (getBackend() && window.runtime && typeof window.runtime.EventsOn === "function") {
+    callback();
+    return;
+  }
+  setTimeout(() => ensureRuntimeReady(callback), 50);
 }
 
 startBtn.addEventListener("click", startScan);
-pauseBtn.addEventListener("click", () => sendCommand("/pause"));
-resumeBtn.addEventListener("click", () => sendCommand("/resume"));
-cancelBtn.addEventListener("click", () => sendCommand("/cancel"));
+pauseBtn.addEventListener("click", pauseScan);
+resumeBtn.addEventListener("click", resumeScan);
+cancelBtn.addEventListener("click", cancelScan);
 exportBtn.addEventListener("click", exportResults);
 importInput.addEventListener("change", importResults);
 
-connectEvents();
+ensureRuntimeReady(() => {
+  subscribeEvents();
+  refreshSnapshot();
+});
+
 updateStatus();
 </script>
 </body>
