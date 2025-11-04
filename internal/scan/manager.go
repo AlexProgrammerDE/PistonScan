@@ -683,7 +683,8 @@ func lookupMDNS(ctx context.Context, host string) []string {
 		return nil
 	}
 
-	entries := make(chan *zeroconf.ServiceEntry, 10)
+	// Create a channel for internal use that won't be closed manually
+	internalEntries := make(chan *zeroconf.ServiceEntry, 10)
 
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
@@ -711,7 +712,7 @@ func lookupMDNS(ctx context.Context, host string) []string {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		for entry := range entries {
+		for entry := range internalEntries {
 			// Check all IPv4 addresses for a match
 			for _, ipv4 := range entry.AddrIPv4 {
 				if ipv4.String() == host {
@@ -764,20 +765,52 @@ func lookupMDNS(ctx context.Context, host string) []string {
 		"_sonos._tcp",            // Sonos speakers
 	}
 
-BrowseLoop:
+	// Use a WaitGroup to track active Browse operations
+	var browseWg sync.WaitGroup
+	
+	// Track if we've already closed the channel
+	var closeOnce sync.Once
+	
+	// Create a wrapper channel for each Browse call to avoid the race condition
+	// where multiple Browse goroutines try to close the same channel
 	for _, serviceType := range serviceTypes {
 		select {
 		case <-ctx.Done():
-			break BrowseLoop
+			break
 		default:
+			browseWg.Add(1)
+			// Create a unique channel for this Browse call
+			serviceEntries := make(chan *zeroconf.ServiceEntry, 10)
+			
+			go func(entries chan *zeroconf.ServiceEntry) {
+				defer browseWg.Done()
+				// Forward entries from this service-specific channel to our internal channel
+				for entry := range entries {
+					select {
+					case internalEntries <- entry:
+					case <-ctx.Done():
+						return
+					}
+				}
+			}(serviceEntries)
+			
 			// Browse for this service type, ignore errors
-			_ = resolver.Browse(ctx, serviceType, "local.", entries)
+			_ = resolver.Browse(ctx, serviceType, "local.", serviceEntries)
 		}
 	}
 
-	// Wait for context to expire
+	// Wait for context to expire first
 	<-ctx.Done()
-	close(entries)
+	
+	// Wait for all Browse operations to complete and their channels to close
+	browseWg.Wait()
+	
+	// Now it's safe to close our internal channel since all Browse operations are done
+	closeOnce.Do(func() {
+		close(internalEntries)
+	})
+	
+	// Wait for the result collector to finish
 	<-done
 
 	resultsMu.Lock()

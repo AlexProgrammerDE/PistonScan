@@ -3,6 +3,7 @@ package scan
 import (
 	"context"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -305,6 +306,50 @@ func TestResultStructWithNewFields(t *testing.T) {
 
 	if len(result.LLMNRNames) != 1 || result.LLMNRNames[0] != "llmnr-host" {
 		t.Fatalf("expected LLMNR name to be set correctly")
+	}
+}
+
+func TestLookupMDNSNoChannelPanic(t *testing.T) {
+	// Test that lookupMDNS doesn't panic when the context expires
+	// This tests the fix for the "close of closed channel" panic
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	// Call lookupMDNS which should complete without panicking
+	// even if the context expires and multiple Browse calls try to close the channel
+	names := lookupMDNS(ctx, "127.0.0.1")
+
+	// We don't care about the actual results (likely empty)
+	// We just want to ensure no panic occurs
+	_ = names
+}
+
+func TestLookupMDNSConcurrentCalls(t *testing.T) {
+	// Test multiple concurrent calls to lookupMDNS to stress test channel handling
+	// This further validates the fix for the race condition
+	var wg sync.WaitGroup
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+			defer cancel()
+			_ = lookupMDNS(ctx, "127.0.0.1")
+		}()
+	}
+
+	// Wait with a timeout to ensure the test doesn't hang
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// Success - all goroutines completed without panicking
+	case <-time.After(5 * time.Second):
+		t.Fatal("Test timed out - possible deadlock in lookupMDNS")
 	}
 }
 
