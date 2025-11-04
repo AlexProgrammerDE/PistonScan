@@ -674,6 +674,22 @@ func lookupMDNS(ctx context.Context, host string) []string {
 	resultsMu := sync.Mutex{}
 	results := make(map[string]struct{})
 
+	// Helper to add hostname results
+	addHostnameResults := func(entry *zeroconf.ServiceEntry) {
+		resultsMu.Lock()
+		defer resultsMu.Unlock()
+		if entry.Instance != "" {
+			results[entry.Instance] = struct{}{}
+		}
+		if entry.HostName != "" {
+			// Clean up hostname (remove trailing dot)
+			hostname := strings.TrimSuffix(entry.HostName, ".")
+			if hostname != "" {
+				results[hostname] = struct{}{}
+			}
+		}
+	}
+
 	// Collect results in background
 	done := make(chan struct{})
 	go func() {
@@ -682,34 +698,15 @@ func lookupMDNS(ctx context.Context, host string) []string {
 			// Check all IPv4 addresses for a match
 			for _, ipv4 := range entry.AddrIPv4 {
 				if ipv4.String() == host {
-					resultsMu.Lock()
-					if entry.Instance != "" {
-						results[entry.Instance] = struct{}{}
-					}
-					if entry.HostName != "" {
-						// Clean up hostname (remove trailing dot)
-						hostname := strings.TrimSuffix(entry.HostName, ".")
-						if hostname != "" {
-							results[hostname] = struct{}{}
-						}
-					}
-					resultsMu.Unlock()
+					addHostnameResults(entry)
+					break
 				}
 			}
 			// Also check IPv6 addresses
 			for _, ipv6 := range entry.AddrIPv6 {
 				if ipv6.String() == host {
-					resultsMu.Lock()
-					if entry.Instance != "" {
-						results[entry.Instance] = struct{}{}
-					}
-					if entry.HostName != "" {
-						hostname := strings.TrimSuffix(entry.HostName, ".")
-						if hostname != "" {
-							results[hostname] = struct{}{}
-						}
-					}
-					resultsMu.Unlock()
+					addHostnameResults(entry)
+					break
 				}
 			}
 		}
@@ -726,10 +723,11 @@ func lookupMDNS(ctx context.Context, host string) []string {
 		"_smb._tcp",
 	}
 
+BrowseLoop:
 	for _, serviceType := range serviceTypes {
 		select {
 		case <-ctx.Done():
-			break
+			break BrowseLoop
 		default:
 			// Browse for this service type, ignore errors
 			_ = resolver.Browse(ctx, serviceType, "local.", entries)
