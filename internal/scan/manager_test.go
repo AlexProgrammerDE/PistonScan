@@ -1,6 +1,7 @@
 package scan
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -85,5 +86,37 @@ func TestGuessOS(t *testing.T) {
 	}
 	if guess := guessOS(220, nil); guess != "Network Appliance" {
 		t.Fatalf("expected network appliance, got %s", guess)
+	}
+}
+
+func TestPingHostLocalhost(t *testing.T) {
+	// Test pinging localhost which should work on all platforms
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	summary, err := pingHost(ctx, "127.0.0.1", 3)
+
+	if err != nil {
+		// On some systems without proper permissions, this might fail
+		if strings.Contains(err.Error(), "permission denied") {
+			t.Skip("Test requires elevated permissions")
+		}
+		t.Fatalf("unexpected error pinging localhost: %v", err)
+	}
+
+	if !summary.Reachable {
+		t.Fatalf("expected localhost to be reachable")
+	}
+
+	if summary.Attempts == 0 {
+		t.Fatalf("expected non-zero attempts")
+	}
+
+	if len(summary.Latencies) == 0 {
+		t.Fatalf("expected some latency measurements, got none")
+	}
+
+	if summary.AvgLatency == 0 {
+		t.Fatalf("expected non-zero average latency")
 	}
 }
