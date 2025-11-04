@@ -2,9 +2,16 @@
 
 ## About
 
-PistonScan is a cross-platform network scanner built with Wails (Go + React). It provides comprehensive network discovery using multiple protocols for hostname resolution.
+PistonScan is a cross-platform network scanner built with Wails (Go + React). It provides comprehensive network discovery using multiple protocols for device detection, service fingerprinting, and security assessment.
 
-### Network Discovery Protocols
+### Core Network Probes
+
+- **ICMP Echo (Ping)** - Host reachability and latency measurement with TTL-based OS fingerprinting
+- **ARP Sweep** - MAC address resolution and manufacturer identification via OUI lookup
+- **TCP Connect Scans** - Service detection on common ports with banner grabbing
+- **UDP Port Probes** - UDP service detection (DNS, DHCP, SNMP, SSDP, etc.)
+
+### Service Discovery Protocols
 
 PistonScan supports multiple discovery protocols for maximum compatibility across different platforms:
 
@@ -13,6 +20,9 @@ PistonScan supports multiple discovery protocols for maximum compatibility acros
 - **DNS-SD** - Service discovery with 30+ service types (cross-platform)
 - **NetBIOS (NBNS)** - Windows name resolution, also via Samba on Linux
 - **LLMNR** - Link-Local Multicast Name Resolution (Windows, some Linux)
+- **SSDP/UPnP** - Universal Plug and Play device discovery (routers, printers, IoT devices)
+- **SNMP v1/v2c** - Network device management protocol queries with common community strings
+- **TLS Certificate Inspection** - Extract certificate details from HTTPS services
 
 For detailed information about each protocol, see [PROTOCOLS.md](PROTOCOLS.md).
 

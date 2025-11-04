@@ -537,22 +537,25 @@ func collectHostDetails(ctx context.Context, host string) Result {
 		mac = lookupMACAddress(infoCtx, host)
 	}()
 	
+	// Scan TCP and UDP services separately, then merge results
+	var tcpServices, udpServices []ServiceInfo
+	
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		services = scanServices(infoCtx, host, defaultServicePorts)
+		tcpServices = scanServices(infoCtx, host, defaultServicePorts)
 	}()
 
-	// Also scan UDP ports and add them to services
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		udpServices := scanUDPServices(infoCtx, host, defaultUDPPorts)
-		// Will be merged after wg.Wait()
-		services = append(services, udpServices...)
+		udpServices = scanUDPServices(infoCtx, host, defaultUDPPorts)
 	}()
 
 	wg.Wait()
+
+	// Merge TCP and UDP services
+	services = append(tcpServices, udpServices...)
 
 	manufacturer := lookupManufacturer(mac)
 	deviceName := selectDeviceName(mdnsNames, netbiosNames, llmnrNames, hostnames)
@@ -682,7 +685,7 @@ const (
 var (
 	macLinePattern      = regexp.MustCompile(`(?i)([0-9a-f]{2}[:-]){5}([0-9a-f]{2})`)
 	whitespacePattern   = regexp.MustCompile(`\s+`)
-	defaultServicePorts = []int{80, 443, 8080, 8443, 8000, 8001, 8002, 8003, 8004, 8005, 8006, 8007, 8008, 8009, 8010, 3000, 4200, 5000, 7000, 22, 445, 3389, 5353, 1900, 21, 23, 25, 110, 143, 139, 135, 548, 631, 554, 5357, 8765, 8888, 53, 161}
+	defaultServicePorts = []int{80, 443, 8080, 8443, 8000, 8001, 8002, 8003, 8004, 8005, 8006, 8007, 8008, 8009, 8010, 3000, 4200, 5000, 7000, 22, 445, 3389, 5353, 1900, 21, 23, 25, 110, 143, 139, 135, 548, 631, 554, 5357, 8765, 8888, 53}
 	defaultUDPPorts     = []int{53, 67, 68, 69, 123, 137, 138, 161, 162, 500, 514, 520, 1900, 5353, 5355}
 	knownServiceNames   = map[int]string{
 		21:   "FTP",
@@ -1597,8 +1600,8 @@ func probeUDPPort(ctx context.Context, host string, port int) bool {
 	response := make([]byte, 512)
 	n, err := conn.Read(response)
 	
-	// If we get any response or specific errors, port is likely open
-	return n > 0 || err == nil
+	// Only consider the port open if we received data
+	return n > 0
 }
 
 // probeSNMP attempts SNMP v1/v2c queries with common community strings
