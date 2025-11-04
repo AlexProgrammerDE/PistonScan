@@ -1,22 +1,22 @@
 package gui
 
 import (
-	"encoding/json"
+	"bytes"
+	"context"
 	"errors"
-	"fmt"
 	"io"
-	"net"
-	"net/http"
-	"os/exec"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/wailsapp/wails/v2"
+	"github.com/wailsapp/wails/v2/pkg/options"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
+
 	"pistonmaster.net/pistonscan/internal/scanner"
 )
 
-// App hosts the web-based graphical interface for PistonScan.
+// App hosts the Wails-based graphical interface for PistonScan.
 type App struct {
 	scanner *scanner.Scanner
 
@@ -25,70 +25,53 @@ type App struct {
 	expected      int
 	currentConfig scanner.Config
 
-	clients map[chan event]struct{}
+	ctx      context.Context
+	observer sync.Once
 }
 
 // New constructs a new App instance ready to run.
 func New() *App {
-	a := &App{
+	return &App{
 		scanner: scanner.New(),
-		clients: make(map[chan event]struct{}),
 	}
-	a.observeScanner()
-	return a
 }
 
-// Run starts the HTTP server hosting the GUI and blocks until it stops.
+// Run starts the Wails application and blocks until it stops.
 func (a *App) Run() error {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/", a.handleIndex)
-	mux.HandleFunc("/start", a.handleStart)
-	mux.HandleFunc("/pause", a.handlePause)
-	mux.HandleFunc("/resume", a.handleResume)
-	mux.HandleFunc("/cancel", a.handleCancel)
-	mux.HandleFunc("/export", a.handleExport)
-	mux.HandleFunc("/import", a.handleImport)
-	mux.HandleFunc("/snapshot", a.handleSnapshot)
-	mux.HandleFunc("/events", a.handleEvents)
-
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return err
-	}
-	addr := ln.Addr().String()
-	fmt.Printf("PistonScan GUI available at http://%s\n", addr)
-	a.launchBrowser(addr)
-
-	server := &http.Server{Handler: mux}
-	if err := server.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		return err
-	}
-	return nil
+	return wails.Run(&options.App{
+		Title:  "PistonScan",
+		Width:  1024,
+		Height: 768,
+		Assets: assets,
+		OnStartup: func(ctx context.Context) {
+			a.startup(ctx)
+		},
+		Bind: []interface{}{a},
+	})
 }
 
-func (a *App) handleIndex(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	io.WriteString(w, indexHTML)
+func (a *App) startup(ctx context.Context) {
+	a.ctx = ctx
+	a.observer.Do(func() {
+		go func() {
+			for range a.scanner.Updates() {
+				a.mu.Lock()
+				a.results = a.scanner.Results()
+				a.mu.Unlock()
+				a.broadcastSnapshot()
+			}
+		}()
+		go func() {
+			for range a.scanner.StateChanges() {
+				a.broadcastSnapshot()
+			}
+		}()
+	})
+	a.broadcastSnapshot()
 }
 
-func (a *App) handleStart(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	var req struct {
-		Subnet  string `json:"subnet"`
-		Threads int    `json:"threads"`
-		DelayMS int    `json:"delay_ms"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid request payload", http.StatusBadRequest)
-		return
-	}
+// Start begins a scan with the provided configuration.
+func (a *App) Start(req StartRequest) error {
 	cfg := scanner.Config{
 		Subnet:  strings.TrimSpace(req.Subnet),
 		Threads: req.Threads,
@@ -96,8 +79,7 @@ func (a *App) handleStart(w http.ResponseWriter, r *http.Request) {
 		Timeout: 2 * time.Second,
 	}
 	if err := a.scanner.Start(cfg); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+		return err
 	}
 
 	a.mu.Lock()
@@ -106,81 +88,51 @@ func (a *App) handleStart(w http.ResponseWriter, r *http.Request) {
 	a.currentConfig = cfg
 	a.mu.Unlock()
 	a.broadcastSnapshot()
-	w.WriteHeader(http.StatusAccepted)
+	return nil
 }
 
-func (a *App) handlePause(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
+// Pause temporarily halts the current scan.
+func (a *App) Pause() {
 	a.scanner.Pause()
-	w.WriteHeader(http.StatusNoContent)
 }
 
-func (a *App) handleResume(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
+// Resume continues a previously paused scan.
+func (a *App) Resume() {
 	a.scanner.Resume()
-	w.WriteHeader(http.StatusNoContent)
 }
 
-func (a *App) handleCancel(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
+// Cancel stops the current scan and finalises results.
+func (a *App) Cancel() {
 	a.scanner.Cancel()
 	a.mu.Lock()
 	a.results = a.scanner.Results()
 	a.mu.Unlock()
 	a.broadcastSnapshot()
-	w.WriteHeader(http.StatusNoContent)
 }
 
-func (a *App) handleExport(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
+// Export returns the current scan data as JSON for download.
+func (a *App) Export() (string, error) {
 	a.mu.Lock()
 	results := append([]scanner.Result(nil), a.results...)
 	cfg := a.currentConfig
 	a.mu.Unlock()
+
 	if len(results) == 0 {
-		http.Error(w, "no scan data to export", http.StatusBadRequest)
-		return
+		return "", errors.New("no scan data to export")
 	}
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Content-Disposition", "attachment; filename=scan.json")
-	if err := scanner.Save(w, cfg, results); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+
+	var buf bytes.Buffer
+	if err := scanner.Save(&buf, cfg, results); err != nil {
+		return "", err
 	}
+	return buf.String(), nil
 }
 
-func (a *App) handleImport(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	if err := r.ParseMultipartForm(10 << 20); err != nil {
-		http.Error(w, "unable to read upload", http.StatusBadRequest)
-		return
-	}
-	file, _, err := r.FormFile("file")
+// Import loads scan data from JSON provided by the frontend.
+func (a *App) Import(data string) error {
+	cfg, results, err := scanner.Load(strings.NewReader(data))
 	if err != nil {
-		http.Error(w, "missing file", http.StatusBadRequest)
-		return
-	}
-	defer file.Close()
-
-	cfg, results, err := scanner.Load(file)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+		return err
 	}
 
 	a.mu.Lock()
@@ -189,144 +141,40 @@ func (a *App) handleImport(w http.ResponseWriter, r *http.Request) {
 	a.currentConfig = cfg
 	a.mu.Unlock()
 	a.broadcastSnapshot()
-	w.WriteHeader(http.StatusCreated)
+	return nil
 }
 
-func (a *App) handleSnapshot(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	snapshot := a.snapshotEvent()
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(snapshot)
-}
-
-func (a *App) handleEvents(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
-		return
-	}
-	ch := make(chan event, 8)
-	a.addClient(ch)
-	defer a.removeClient(ch)
-
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-
-	initial := a.snapshotEvent()
-	writeEvent(w, initial)
-	flusher.Flush()
-
-	for {
-		select {
-		case <-r.Context().Done():
-			return
-		case ev := <-ch:
-			writeEvent(w, ev)
-			flusher.Flush()
-		}
-	}
-}
-
-func (a *App) observeScanner() {
-	go func() {
-		for range a.scanner.Updates() {
-			a.mu.Lock()
-			a.results = a.scanner.Results()
-			a.mu.Unlock()
-			a.broadcastSnapshot()
-		}
-	}()
-	go func() {
-		for range a.scanner.StateChanges() {
-			a.broadcastSnapshot()
-		}
-	}()
+// Snapshot returns the latest snapshot of scan progress.
+func (a *App) Snapshot() Snapshot {
+	return a.snapshotEvent()
 }
 
 func (a *App) broadcastSnapshot() {
-	a.broadcast(a.snapshotEvent())
+	if a.ctx == nil {
+		return
+	}
+	snapshot := a.snapshotEvent()
+	runtime.EventsEmit(a.ctx, "snapshot", snapshot)
 }
 
-func (a *App) snapshotEvent() event {
+func (a *App) snapshotEvent() Snapshot {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	ev := event{
+	snapshot := Snapshot{
 		Type:     "snapshot",
 		State:    a.scanner.State().String(),
 		Expected: a.expected,
 		Results:  make([]ResultPayload, len(a.results)),
 	}
 	for i, res := range a.results {
-		ev.Results[i] = convertResult(res)
+		snapshot.Results[i] = convertResult(res)
 	}
-	ev.Completed = len(a.results)
-	return ev
+	snapshot.Completed = len(a.results)
+	return snapshot
 }
 
-func (a *App) addClient(ch chan event) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.clients[ch] = struct{}{}
-}
-
-func (a *App) removeClient(ch chan event) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	delete(a.clients, ch)
-	close(ch)
-}
-
-func (a *App) broadcast(ev event) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	for ch := range a.clients {
-		select {
-		case ch <- ev:
-		default:
-		}
-	}
-}
-
-func writeEvent(w http.ResponseWriter, ev event) {
-	data, _ := json.Marshal(ev)
-	fmt.Fprintf(w, "data: %s\n\n", data)
-}
-
-func convertResult(res scanner.Result) ResultPayload {
-	return ResultPayload{
-		IP:        res.IP,
-		Reachable: res.Reachable,
-		LatencyMS: res.Latency.Milliseconds(),
-		CheckedAt: res.CheckedAt.Format(time.RFC3339),
-		Error:     res.Error,
-	}
-}
-
-func (a *App) launchBrowser(addr string) {
-	url := "http://" + addr
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "windows":
-		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
-	case "darwin":
-		cmd = exec.Command("open", url)
-	default:
-		cmd = exec.Command("xdg-open", url)
-	}
-	if cmd != nil {
-		cmd.Start()
-	}
-}
-
-type event struct {
+// Snapshot represents the payload emitted to the frontend.
+type Snapshot struct {
 	Type      string          `json:"type"`
 	State     string          `json:"state"`
 	Expected  int             `json:"expected"`
@@ -341,6 +189,23 @@ type ResultPayload struct {
 	LatencyMS int64  `json:"latency_ms"`
 	CheckedAt string `json:"checked_at"`
 	Error     string `json:"error"`
+}
+
+// StartRequest contains the user-provided scan options.
+type StartRequest struct {
+	Subnet  string `json:"subnet"`
+	Threads int    `json:"threads"`
+	DelayMS int    `json:"delay_ms"`
+}
+
+func convertResult(res scanner.Result) ResultPayload {
+	return ResultPayload{
+		IP:        res.IP,
+		Reachable: res.Reachable,
+		LatencyMS: res.Latency.Milliseconds(),
+		CheckedAt: res.CheckedAt.Format(time.RFC3339),
+		Error:     res.Error,
+	}
 }
 
 // LoadSnapshotFromReader allows tests to supply snapshot data without multipart parsing.
