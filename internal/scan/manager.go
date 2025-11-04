@@ -562,21 +562,23 @@ func pingHost(ctx context.Context, host string, attempts int) (pingSummary, erro
 		errCh <- pinger.Run()
 	}()
 
-	select {
-	case <-ctx.Done():
-		pinger.Stop()
-		return summary, ctx.Err()
-	case err := <-errCh:
-		if err != nil {
-			return summary, err
-		}
-	}
-
 	var stats *ping.Statistics
-	select {
-	case stats = <-statsCh:
-	case <-ctx.Done():
-		return summary, ctx.Err()
+	var runErr error
+
+	// Wait for both the run to complete and stats to be available
+	for stats == nil && runErr == nil {
+		select {
+		case <-ctx.Done():
+			pinger.Stop()
+			return summary, ctx.Err()
+		case runErr = <-errCh:
+			if runErr != nil {
+				return summary, runErr
+			}
+			// Run completed successfully, now wait for stats
+		case stats = <-statsCh:
+			// Stats received
+		}
 	}
 
 	if stats == nil {
