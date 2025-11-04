@@ -565,6 +565,10 @@ func pingHost(ctx context.Context, host string, attempts int) (pingSummary, erro
 	var stats *ping.Statistics
 	var runErr error
 
+	// Create a timer for additional safety in case stats never arrive
+	statsTimeout := time.NewTimer(pinger.Timeout + 2*time.Second)
+	defer statsTimeout.Stop()
+
 	// Wait for both the run to complete and stats to be available
 	for stats == nil && runErr == nil {
 		select {
@@ -578,6 +582,9 @@ func pingHost(ctx context.Context, host string, attempts int) (pingSummary, erro
 			// Run completed successfully, now wait for stats
 		case stats = <-statsCh:
 			// Stats received
+		case <-statsTimeout.C:
+			// Timeout waiting for stats after Run completed
+			return summary, errors.New("timeout waiting for ping statistics")
 		}
 	}
 
