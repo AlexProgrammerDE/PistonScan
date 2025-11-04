@@ -647,7 +647,7 @@ func lookupHostnames(ctx context.Context, host string) []string {
 	resolver := &net.Resolver{
 		PreferGo: false,
 	}
-	
+
 	lookupCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
