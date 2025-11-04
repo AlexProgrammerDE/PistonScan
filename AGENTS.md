@@ -1,11 +1,5 @@
 # Agent Guidelines
 
-## General Practices
-- Format Go code with `gofmt` before committing changes.
-- Place CLI entry points under `cmd/` and keep reusable logic in packages when functionality is added.
-- Favor straightforward standard-library solutions unless there is a clear benefit to add dependencies.
-- Keep usage text for commands up to date when modifying CLI behavior.
-
 ## Developing the Application
 - Run the application in development mode with `wails dev` from the project root. This will build and run the app, bind Go code to the frontend, watch for Go file changes, and serve the app over a browser so you can use browser extensions and call Go code from the console.
 - While in dev mode, the CLI automatically updates `go.mod` to match the CLI version, recompiles the app on Go file changes, reloads assets on change, and generates JavaScript/TypeScript bindings for Go methods and structs.
