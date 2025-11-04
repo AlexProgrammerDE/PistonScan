@@ -61,6 +61,8 @@ export namespace scan {
 	    ttl?: number;
 	    hostnames?: string[];
 	    mdnsNames?: string[];
+	    netbiosNames?: string[];
+	    llmnrNames?: string[];
 	    deviceName?: string;
 	    macAddress?: string;
 	    manufacturer?: string;
@@ -82,6 +84,8 @@ export namespace scan {
 	        this.ttl = source["ttl"];
 	        this.hostnames = source["hostnames"];
 	        this.mdnsNames = source["mdnsNames"];
+	        this.netbiosNames = source["netbiosNames"];
+	        this.llmnrNames = source["llmnrNames"];
 	        this.deviceName = source["deviceName"];
 	        this.macAddress = source["macAddress"];
 	        this.manufacturer = source["manufacturer"];
