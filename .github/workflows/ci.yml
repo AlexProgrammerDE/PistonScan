@@ -2,6 +2,7 @@ name: Wails build
 
 on:
   push:
+  pull_request:
 
 env:
   # Necessary for most environments as build failure can occur due to OOM issues
