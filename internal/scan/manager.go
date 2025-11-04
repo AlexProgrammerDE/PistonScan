@@ -659,7 +659,6 @@ func lookupMDNS(ctx context.Context, host string) []string {
 	}
 
 	entries := make(chan *zeroconf.ServiceEntry)
-	defer close(entries)
 
 	ctx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
 	defer cancel()
