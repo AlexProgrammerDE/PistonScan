@@ -54,6 +54,7 @@ type Result struct {
 	Manufacturer     string        `json:"manufacturer,omitempty"`
 	OSGuess          string        `json:"osGuess,omitempty"`
 	Services         []ServiceInfo `json:"services,omitempty"`
+	AirPlay          *AirPlayInfo  `json:"airPlay,omitempty"`
 	DiscoverySources []string      `json:"discoverySources,omitempty"`
 	InsightScore     int           `json:"insightScore,omitempty"`
 	Error            string        `json:"error,omitempty"`
@@ -66,6 +67,12 @@ type ServiceInfo struct {
 	Service     string `json:"service"`
 	Banner      string `json:"banner,omitempty"`
 	TLSCertInfo string `json:"tlsCertInfo,omitempty"`
+}
+
+// AirPlayInfo captures additional metadata advertised by AirPlay devices.
+type AirPlayInfo struct {
+	Endpoint string            `json:"endpoint,omitempty"`
+	Fields   map[string]string `json:"fields,omitempty"`
 }
 
 // Progress contains a summary of the current scan progress.

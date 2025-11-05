@@ -313,6 +313,55 @@ button:not(:disabled):active {
     color: #9fb6d3;
 }
 
+.observation-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+}
+
+.observation-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    background: rgba(255, 255, 255, 0.08);
+    color: #dbe6ff;
+    border: 1px solid transparent;
+}
+
+.observation-pill.tone-info {
+    background: rgba(127, 183, 255, 0.18);
+    border-color: rgba(127, 183, 255, 0.3);
+    color: #e2edff;
+}
+
+.observation-pill.tone-warn {
+    background: rgba(255, 170, 80, 0.2);
+    border-color: rgba(255, 170, 80, 0.35);
+    color: #ffe4c3;
+}
+
+.observation-pill.tone-error {
+    background: rgba(255, 99, 71, 0.2);
+    border-color: rgba(255, 99, 71, 0.4);
+    color: #ffd1c8;
+}
+
+.observation-pill.tone-muted {
+    background: rgba(90, 112, 142, 0.25);
+    border-color: rgba(90, 112, 142, 0.35);
+    color: #c6d1e4;
+}
+
+.observation-pill.tone-success {
+    background: rgba(76, 217, 100, 0.18);
+    border-color: rgba(76, 217, 100, 0.3);
+    color: #d5ffe1;
+}
+
 .results-table td .error-text {
     color: #ffb3a5;
     font-size: 0.85rem;
@@ -494,6 +543,27 @@ button:not(:disabled):active {
     color: #e4ecff;
 }
 
+.metadata-grid {
+    margin: 0;
+    display: grid;
+    grid-template-columns: 120px 1fr;
+    gap: 0.35rem 0.75rem;
+    font-size: 0.9rem;
+    word-break: break-word;
+}
+
+.metadata-grid dt {
+    color: #8aa6ce;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.05em;
+}
+
+.metadata-grid dd {
+    margin: 0;
+    color: #f0f4ff;
+}
+
 .latency-samples-wrapper {
     display: flex;
     flex-wrap: wrap;
@@ -539,6 +609,18 @@ button:not(:disabled):active {
     align-items: center;
     font-weight: 600;
     color: #f1f6ff;
+}
+
+.service-link {
+    color: #a8ceff;
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+.service-link:hover,
+.service-link:focus {
+    color: #d8e7ff;
+    text-decoration: underline;
 }
 
 .service-banner {

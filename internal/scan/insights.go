@@ -87,6 +87,11 @@ func enrichInsightMetadata(result *Result) {
 		}
 	}
 
+	if result.AirPlay != nil && len(result.AirPlay.Fields) > 0 {
+		score += 2
+		addSource("airplay")
+	}
+
 	result.InsightScore = score
 
 	if len(sources) == 0 {
