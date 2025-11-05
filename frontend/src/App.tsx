@@ -1,4 +1,4 @@
-import {ChangeEvent, useCallback, useEffect, useMemo, useState} from 'react';
+import {ChangeEvent, Fragment, useCallback, useEffect, useMemo, useState} from 'react';
 import './App.css';
 import {
     CancelScan,
@@ -32,6 +32,11 @@ interface ServiceInfo {
     tlsCertInfo?: string;
 }
 
+interface AirPlayInfo {
+    endpoint?: string;
+    fields?: Record<string, string>;
+}
+
 interface ScanResult {
     ip: string;
     reachable: boolean;
@@ -48,6 +53,7 @@ interface ScanResult {
     manufacturer?: string;
     osGuess?: string;
     services?: ServiceInfo[];
+    airPlay?: AirPlayInfo;
     discoverySources?: string[];
     insightScore?: number;
     error?: string;
@@ -74,6 +80,16 @@ interface FormState {
 const defaultProgress: ScanProgress = {total: 0, completed: 0, active: 0, status: 'idle'};
 
 type SortKey = 'insights' | 'latency' | 'ip';
+
+type ObservationTone = 'info' | 'warn' | 'error' | 'muted' | 'success';
+
+interface Observation {
+    label: string;
+    tone: ObservationTone;
+}
+
+const httpPorts = new Set([80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 8000, 8008, 8080, 8081, 8888]);
+const httpsPorts = new Set([443, 4443, 8443, 9443]);
 
 const normaliseError = (error: unknown): string => {
     if (typeof error === 'string') {
@@ -200,6 +216,175 @@ function App() {
                 </span>
             );
         });
+    };
+
+    const getAirPlayEntries = (info?: AirPlayInfo): [string, string][] => {
+        if (!info?.fields) {
+            return [];
+        }
+        return Object.entries(info.fields).sort(([a], [b]) => a.localeCompare(b));
+    };
+
+    const getAirPlayField = (info: AirPlayInfo | undefined, key: string): string | undefined => {
+        if (!info?.fields) {
+            return undefined;
+        }
+        if (info.fields[key]) {
+            return info.fields[key];
+        }
+        const match = Object.entries(info.fields).find(([entryKey]) => entryKey.toLowerCase() === key.toLowerCase());
+        return match?.[1];
+    };
+
+    const renderAirPlayMetadata = (info?: AirPlayInfo) => {
+        const entries = getAirPlayEntries(info);
+        if (!info?.endpoint && entries.length === 0) {
+            return null;
+        }
+
+        return (
+            <dl className="metadata-grid">
+                {info?.endpoint && (
+                    <>
+                        <dt>Source</dt>
+                        <dd>{info.endpoint}</dd>
+                    </>
+                )}
+                {entries.map(([key, value]) => (
+                    <Fragment key={key}>
+                        <dt>{key}</dt>
+                        <dd>{value}</dd>
+                    </Fragment>
+                ))}
+            </dl>
+        );
+    };
+
+    const getPreferredHostname = (item: ScanResult) => {
+        const dnsHost = item.hostnames?.find((name) => !!name);
+        if (dnsHost) {
+            return dnsHost;
+        }
+        const mdnsHost = item.mdnsNames?.find((name) => !!name);
+        if (mdnsHost) {
+            return mdnsHost;
+        }
+        return item.ip;
+    };
+
+    const buildServiceUrl = (service: ServiceInfo, item: ScanResult): string | null => {
+        if (service.protocol.toLowerCase() !== 'tcp') {
+            return null;
+        }
+
+        const name = service.service.toLowerCase();
+        const hasTls = Boolean(service.tlsCertInfo);
+        const isHttpsCandidate = hasTls || httpsPorts.has(service.port) || name.includes('https');
+        const isHttpCandidate = httpPorts.has(service.port) || name.includes('http') || name.includes('web');
+
+        if (!isHttpsCandidate && !isHttpCandidate) {
+            return null;
+        }
+
+        const scheme = isHttpsCandidate ? 'https' : 'http';
+        const defaultPort = scheme === 'https' ? 443 : 80;
+        const host = getPreferredHostname(item);
+        const needsPort = service.port !== defaultPort;
+        const portSuffix = needsPort ? `:${service.port}` : '';
+
+        return `${scheme}://${host}${portSuffix}`;
+    };
+
+    const buildObservations = (item: ScanResult): Observation[] => {
+        const observations: Observation[] = [];
+        const addObservation = (observation: Observation) => {
+            if (!observations.some((existing) => existing.label === observation.label)) {
+                observations.push(observation);
+            }
+        };
+
+        if (item.error) {
+            addObservation({label: item.error, tone: 'error'});
+            return observations;
+        }
+
+        if (!item.reachable) {
+            addObservation({label: 'No response detected', tone: 'muted'});
+        } else {
+            if (item.latencyMs > 0 && item.latencyMs <= 5) {
+                addObservation({label: 'Very low latency', tone: 'success'});
+            } else if (item.latencyMs > 120) {
+                addObservation({label: `High latency (${formatLatency(item.latencyMs)} ms)`, tone: 'warn'});
+            }
+        }
+
+        const hostnameLabel = item.hostnames?.[0] ?? item.mdnsNames?.[0];
+        if (hostnameLabel) {
+            addObservation({label: `Hostname: ${hostnameLabel}`, tone: 'info'});
+        }
+
+        if (item.discoverySources && item.discoverySources.length > 0) {
+            const preferredSources = item.discoverySources.slice(0, 2);
+            preferredSources.forEach((source) => {
+                addObservation({label: `Seen via ${source}`, tone: 'muted'});
+            });
+        }
+
+        if (item.services && item.services.length > 0) {
+            item.services.forEach((service) => {
+                const name = service.service.toLowerCase();
+                if (service.port === 3389 || name.includes('rdp')) {
+                    addObservation({label: 'RDP exposed', tone: 'warn'});
+                }
+                if (service.port === 445 || name.includes('smb')) {
+                    addObservation({label: 'SMB file sharing', tone: 'warn'});
+                }
+                if (service.port === 22 || name.includes('ssh')) {
+                    addObservation({label: 'SSH remote access', tone: 'info'});
+                }
+                if (service.port === 21 || name.includes('ftp')) {
+                    addObservation({label: 'FTP (unencrypted)', tone: 'warn'});
+                }
+                if (service.port === 23 || name.includes('telnet')) {
+                    addObservation({label: 'Telnet (unencrypted)', tone: 'warn'});
+                }
+                if (service.port === 25 || name.includes('smtp')) {
+                    addObservation({label: 'SMTP service', tone: 'info'});
+                }
+                if (httpsPorts.has(service.port) || name.includes('https') || service.tlsCertInfo) {
+                    addObservation({label: `HTTPS on ${service.port}`, tone: 'success'});
+                } else if (httpPorts.has(service.port) || name.includes('http')) {
+                    addObservation({label: `HTTP on ${service.port}`, tone: 'warn'});
+                }
+                if (service.banner) {
+                    const banner = service.banner.toLowerCase();
+                    if (banner.includes('openssh')) {
+                        addObservation({label: 'OpenSSH banner', tone: 'info'});
+                    } else if (banner.includes('microsoft')) {
+                        addObservation({label: 'Microsoft service banner', tone: 'info'});
+                    }
+                }
+            });
+        }
+
+        if (item.airPlay?.fields && Object.keys(item.airPlay.fields).length > 0) {
+            const model =
+                getAirPlayField(item.airPlay, 'model') ??
+                getAirPlayField(item.airPlay, 'hwmodel') ??
+                getAirPlayField(item.airPlay, 'deviceid') ??
+                getAirPlayField(item.airPlay, 'name');
+            if (model) {
+                addObservation({label: `AirPlay: ${model}`, tone: 'info'});
+            } else {
+                addObservation({label: 'AirPlay service metadata', tone: 'info'});
+            }
+        }
+
+        if (item.osGuess && item.osGuess !== 'Unknown') {
+            addObservation({label: `OS likely ${item.osGuess}`, tone: 'info'});
+        }
+
+        return observations.slice(0, 5);
     };
 
     const toggleExpanded = (ip: string) => {
@@ -578,6 +763,8 @@ function App() {
                                 const insightScore = item.insightScore ?? 0;
                                 const insightPercent = maxInsightScore > 0 ? Math.round((insightScore / maxInsightScore) * 100) : 0;
                                 const insightSources = item.discoverySources ?? [];
+                                const observations = buildObservations(item);
+                                const airPlayMetadata = renderAirPlayMetadata(item.airPlay);
                                 return (
                                     <>
                                         <tr key={`${item.ip}-summary`} className={expanded ? 'expanded' : ''}>
@@ -626,10 +813,19 @@ function App() {
                                                 </span>
                                             </td>
                                             <td>
-                                                {item.error ? (
-                                                    <span className="error-text">{item.error}</span>
+                                                {observations.length > 0 ? (
+                                                    <div className="observation-pills">
+                                                        {observations.map((observation) => (
+                                                            <span
+                                                                key={observation.label}
+                                                                className={`observation-pill tone-${observation.tone}`}
+                                                            >
+                                                                {observation.label}
+                                                            </span>
+                                                        ))}
+                                                    </div>
                                                 ) : (
-                                                    <span className="meta">{item.ttl ? `TTL ${item.ttl}` : '—'} • {item.attempts} checks</span>
+                                                    <span className="meta">No observations</span>
                                                 )}
                                             </td>
                                         </tr>
@@ -681,27 +877,45 @@ function App() {
                                                                 <dd>{renderList(item.llmnrNames)}</dd>
                                                             </dl>
                                                         </div>
+                                                        {airPlayMetadata && (
+                                                            <div className="detail-card">
+                                                                <h3>AirPlay metadata</h3>
+                                                                {airPlayMetadata}
+                                                            </div>
+                                                        )}
                                                         <div className="detail-card">
                                                             <h3>Services ({item.services?.length ?? 0})</h3>
                                                             {item.services && item.services.length > 0 ? (
                                                                 <ul className="service-list">
-                                                                    {item.services.map((service) => (
-                                                                        <li key={`${service.protocol}-${service.port}-${service.service}`}>
-                                                                            <div className="service-header">
-                                                                                <span>
-                                                                                    {service.service} ({service.port}/
-                                                                                    {service.protocol.toUpperCase()})
-                                                                                </span>
+                                                                    {item.services.map((service) => {
+                                                                        const serviceLabel = `${service.service} (${service.port}/${service.protocol.toUpperCase()})`;
+                                                                        const serviceUrl = buildServiceUrl(service, item);
+                                                                        return (
+                                                                            <li key={`${service.protocol}-${service.port}-${service.service}`}>
+                                                                                <div className="service-header">
+                                                                                    {serviceUrl ? (
+                                                                                        <a
+                                                                                            href={serviceUrl}
+                                                                                            target="_blank"
+                                                                                            rel="noopener noreferrer"
+                                                                                            className="service-link"
+                                                                                        >
+                                                                                            {serviceLabel}
+                                                                                        </a>
+                                                                                    ) : (
+                                                                                        <span>{serviceLabel}</span>
+                                                                                    )}
+                                                                                    {service.tlsCertInfo && (
+                                                                                        <span className="tls-chip">TLS</span>
+                                                                                    )}
+                                                                                </div>
+                                                                                {service.banner && <div className="service-banner">{service.banner}</div>}
                                                                                 {service.tlsCertInfo && (
-                                                                                    <span className="tls-chip">TLS</span>
+                                                                                    <div className="service-banner tls">{service.tlsCertInfo}</div>
                                                                                 )}
-                                                                            </div>
-                                                                            {service.banner && <div className="service-banner">{service.banner}</div>}
-                                                                            {service.tlsCertInfo && (
-                                                                                <div className="service-banner tls">{service.tlsCertInfo}</div>
-                                                                            )}
-                                                                        </li>
-                                                                    ))}
+                                                                            </li>
+                                                                        );
+                                                                    })}
                                                                 </ul>
                                                             ) : (
                                                                 <p>—</p>
