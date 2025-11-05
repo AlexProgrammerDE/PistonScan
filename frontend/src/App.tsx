@@ -37,6 +37,12 @@ interface AirPlayInfo {
     fields?: Record<string, string>;
 }
 
+interface SMBInfo {
+    computerName?: string;
+    domain?: string;
+    source?: string;
+}
+
 interface ScanResult {
     ip: string;
     reachable: boolean;
@@ -48,6 +54,7 @@ interface ScanResult {
     mdnsNames?: string[];
     netbiosNames?: string[];
     llmnrNames?: string[];
+    smbInfo?: SMBInfo;
     deviceName?: string;
     macAddress?: string;
     manufacturer?: string;
@@ -88,8 +95,41 @@ interface Observation {
     tone: ObservationTone;
 }
 
-const httpPorts = new Set([80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 8000, 8008, 8080, 8081, 8888]);
-const httpsPorts = new Set([443, 4443, 8443, 9443]);
+const httpPorts = new Set([
+    80,
+    81,
+    3000,
+    3128,
+    4200,
+    5000,
+    5601,
+    5984,
+    5985,
+    7000,
+    7547,
+    8000,
+    8001,
+    8002,
+    8003,
+    8004,
+    8005,
+    8006,
+    8007,
+    8008,
+    8009,
+    8010,
+    8080,
+    8081,
+    8082,
+    8083,
+    8086,
+    8088,
+    8530,
+    8888,
+    9000,
+    9200
+]);
+const httpsPorts = new Set([443, 4443, 5986, 8443, 8729, 9443]);
 
 const normaliseError = (error: unknown): string => {
     if (typeof error === 'string') {
@@ -323,6 +363,14 @@ function App() {
             addObservation({label: `Hostname: ${hostnameLabel}`, tone: 'info'});
         }
 
+        if (item.smbInfo?.computerName) {
+            addObservation({label: `SMB workstation: ${item.smbInfo.computerName}`, tone: 'info'});
+        }
+
+        if (item.smbInfo?.domain) {
+            addObservation({label: `SMB domain: ${item.smbInfo.domain}`, tone: 'muted'});
+        }
+
         if (item.discoverySources && item.discoverySources.length > 0) {
             const preferredSources = item.discoverySources.slice(0, 2);
             preferredSources.forEach((source) => {
@@ -355,6 +403,45 @@ function App() {
                     addObservation({label: `HTTPS on ${service.port}`, tone: 'success'});
                 } else if (httpPorts.has(service.port) || name.includes('http')) {
                     addObservation({label: `HTTP on ${service.port}`, tone: 'warn'});
+                }
+                if (service.port === 161 || name.includes('snmp')) {
+                    addObservation({label: 'SNMP management interface', tone: 'info'});
+                }
+                if (service.port === 5985 || service.port === 5986 || name.includes('winrm')) {
+                    addObservation({label: 'WinRM remote management', tone: 'warn'});
+                }
+                if (service.port === 7547 || name.includes('tr-069')) {
+                    addObservation({label: 'TR-069 remote management', tone: 'warn'});
+                }
+                if (service.port === 8291 || name.includes('winbox')) {
+                    addObservation({label: 'MikroTik WinBox service', tone: 'warn'});
+                }
+                if (service.port === 8728 || service.port === 8729 || name.includes('mikrotik')) {
+                    addObservation({label: 'MikroTik API endpoint', tone: 'info'});
+                }
+                if (service.port === 515 || name.includes('lpd')) {
+                    addObservation({label: 'LPD printing available', tone: 'info'});
+                }
+                if (service.port === 9100 || name.includes('jetdirect') || name.includes('printer')) {
+                    addObservation({label: 'Printer raw port (JetDirect)', tone: 'info'});
+                }
+                if (service.port === 3306 || name.includes('mysql')) {
+                    addObservation({label: 'MySQL database service', tone: 'info'});
+                }
+                if (service.port === 5432 || name.includes('postgres')) {
+                    addObservation({label: 'PostgreSQL database service', tone: 'info'});
+                }
+                if (service.port === 1433 || name.includes('mssql')) {
+                    addObservation({label: 'Microsoft SQL Server', tone: 'info'});
+                }
+                if (service.port === 6379 || name.includes('redis')) {
+                    addObservation({label: 'Redis data store', tone: 'info'});
+                }
+                if (service.port === 27017 || name.includes('mongo')) {
+                    addObservation({label: 'MongoDB database', tone: 'info'});
+                }
+                if (service.port === 9200 || name.includes('elastic')) {
+                    addObservation({label: 'Elasticsearch endpoint', tone: 'info'});
                 }
                 if (service.banner) {
                     const banner = service.banner.toLowerCase();
@@ -780,13 +867,17 @@ function App() {
                                                 </button>
                                             </td>
                                             <td>
-                                                <div className="device-name">{item.deviceName ?? '—'}</div>
-                                                <div className="device-aliases">
-                                                    {[...(item.mdnsNames ?? []), ...(item.hostnames ?? [])]
-                                                        .filter((value, index, array) => array.indexOf(value) === index)
-                                                        .join(', ') || '—'}
-                                                </div>
-                                            </td>
+                                            <div className="device-name">{item.deviceName ?? '—'}</div>
+                                            <div className="device-aliases">
+                                                {[
+                                                    ...(item.mdnsNames ?? []),
+                                                    ...(item.hostnames ?? []),
+                                                    ...(item.smbInfo?.computerName ? [item.smbInfo.computerName] : [])
+                                                ]
+                                                    .filter((value, index, array) => array.indexOf(value) === index)
+                                                    .join(', ') || '—'}
+                                            </div>
+                                        </td>
                                             <td>{item.ip}</td>
                                             <td className="mono">{item.macAddress ?? '—'}</td>
                                             <td>{item.manufacturer ?? '—'}</td>
@@ -840,6 +931,15 @@ function App() {
                                                                 <li><span>MAC:</span> {item.macAddress ?? '—'}</li>
                                                                 <li><span>Manufacturer:</span> {item.manufacturer ?? '—'}</li>
                                                                 <li><span>Device name:</span> {item.deviceName ?? '—'}</li>
+                                                                {item.smbInfo?.computerName && (
+                                                                    <li><span>SMB name:</span> {item.smbInfo.computerName}</li>
+                                                                )}
+                                                                {item.smbInfo?.domain && (
+                                                                    <li><span>SMB domain:</span> {item.smbInfo.domain}</li>
+                                                                )}
+                                                                {item.smbInfo?.source && (
+                                                                    <li><span>SMB source:</span> {item.smbInfo.source}</li>
+                                                                )}
                                                                 <li><span>OS guess:</span> {item.osGuess ?? '—'}</li>
                                                                 <li><span>TTL:</span> {item.ttl ?? '—'}</li>
                                                                 <li><span>Checks:</span> {item.attempts}</li>
@@ -873,6 +973,10 @@ function App() {
                                                                 <dd>{renderList(item.mdnsNames)}</dd>
                                                                 <dt>NetBIOS</dt>
                                                                 <dd>{renderList(item.netbiosNames)}</dd>
+                                                                <dt>SMB</dt>
+                                                                <dd>{item.smbInfo?.computerName ?? '—'}</dd>
+                                                                <dt>SMB domain</dt>
+                                                                <dd>{item.smbInfo?.domain ?? '—'}</dd>
                                                                 <dt>LLMNR</dt>
                                                                 <dd>{renderList(item.llmnrNames)}</dd>
                                                             </dl>

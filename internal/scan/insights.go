@@ -53,6 +53,16 @@ func enrichInsightMetadata(result *Result) {
 		addSource("llmnr")
 	}
 
+	if result.SMBInfo != nil {
+		if result.SMBInfo.ComputerName != "" {
+			score += 2
+		}
+		if result.SMBInfo.Domain != "" {
+			score++
+		}
+		addSource("smb")
+	}
+
 	if result.DeviceName != "" {
 		score++
 	}

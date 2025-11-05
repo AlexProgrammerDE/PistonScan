@@ -93,6 +93,16 @@ func TestGuessOS(t *testing.T) {
 		t.Fatalf("expected Linux guess, got %s", guess)
 	}
 
+	networkServices := []ServiceInfo{{Port: 8291, Protocol: "tcp", Service: "MikroTik WinBox", Banner: "MikroTik RouterOS 7.7"}}
+	if guess := guessOS(networkServices); guess != "Network Infrastructure" {
+		t.Fatalf("expected Network Infrastructure guess, got %s", guess)
+	}
+
+	printerServices := []ServiceInfo{{Port: 9100, Protocol: "tcp", Service: "JetDirect", Banner: "HP JetDirect Printer"}}
+	if guess := guessOS(printerServices); guess != "Printer / Scanner" {
+		t.Fatalf("expected Printer / Scanner guess, got %s", guess)
+	}
+
 	if guess := guessOS([]ServiceInfo{{Port: 80, Protocol: "tcp", Service: "HTTP"}}); guess != "Unknown" {
 		t.Fatalf("expected Unknown guess for generic services, got %s", guess)
 	}
@@ -187,38 +197,44 @@ func TestSelectDeviceName(t *testing.T) {
 	dns := []string{"dns-device"}
 
 	// mDNS takes priority
-	if name := selectDeviceName(mdns, netbios, llmnr, dns, nil); name != "mdns-device" {
+	if name := selectDeviceName(mdns, netbios, llmnr, dns, nil, nil); name != "mdns-device" {
 		t.Fatalf("expected mDNS name to take priority, got %s", name)
 	}
 
 	// NetBIOS takes priority when no mDNS
-	if name := selectDeviceName(nil, netbios, llmnr, dns, nil); name != "netbios-device" {
+	if name := selectDeviceName(nil, netbios, llmnr, dns, nil, nil); name != "netbios-device" {
 		t.Fatalf("expected NetBIOS name when no mDNS, got %s", name)
 	}
 
 	// LLMNR takes priority when no mDNS or NetBIOS
-	if name := selectDeviceName(nil, nil, llmnr, dns, nil); name != "llmnr-device" {
+	if name := selectDeviceName(nil, nil, llmnr, dns, nil, nil); name != "llmnr-device" {
 		t.Fatalf("expected LLMNR name when no mDNS or NetBIOS, got %s", name)
 	}
 
 	// DNS as fallback
-	if name := selectDeviceName(nil, nil, nil, dns, nil); name != "dns-device" {
+	if name := selectDeviceName(nil, nil, nil, dns, nil, nil); name != "dns-device" {
 		t.Fatalf("expected DNS name as fallback, got %s", name)
 	}
 
 	// Empty when nothing available
-	if name := selectDeviceName(nil, nil, nil, nil, nil); name != "" {
+	if name := selectDeviceName(nil, nil, nil, nil, nil, nil); name != "" {
 		t.Fatalf("expected empty name when no sources available, got %s", name)
+	}
+
+	// SMB info when other sources unavailable
+	smb := &SMBInfo{ComputerName: "smb-device"}
+	if name := selectDeviceName(nil, nil, nil, nil, smb, nil); name != "smb-device" {
+		t.Fatalf("expected SMB name when available, got %s", name)
 	}
 
 	// AirPlay metadata when other sources unavailable
 	airPlay := &AirPlayInfo{Fields: map[string]string{"name": "Living Room Apple TV"}}
-	if name := selectDeviceName(nil, nil, nil, nil, airPlay); name != "Living Room Apple TV" {
+	if name := selectDeviceName(nil, nil, nil, nil, nil, airPlay); name != "Living Room Apple TV" {
 		t.Fatalf("expected AirPlay name when available, got %s", name)
 	}
 
 	// AirPlay should not override mDNS
-	if name := selectDeviceName(mdns, netbios, llmnr, dns, airPlay); name != "mdns-device" {
+	if name := selectDeviceName(mdns, netbios, llmnr, dns, nil, airPlay); name != "mdns-device" {
 		t.Fatalf("expected mDNS to override AirPlay metadata, got %s", name)
 	}
 }
