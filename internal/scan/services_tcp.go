@@ -247,12 +247,7 @@ func readServiceBanner(conn net.Conn, host string, port int) string {
 	if err != nil {
 		return ""
 	}
-	banner := strings.TrimSpace(line)
-	// Validate VNC/RFB banner format
-	if port == 5900 && strings.HasPrefix(banner, "RFB ") {
-		return banner
-	}
-	return banner
+	return strings.TrimSpace(line)
 }
 
 func isHTTPPort(port int) bool {

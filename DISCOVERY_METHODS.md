@@ -154,7 +154,7 @@ Common VNC/RFB versions detected:
 - **Result field**: Appears in `services` array with RFB banner
 
 ### Code Enhancement
-Added specific VNC/RFB detection:
+Simplified VNC/RFB banner reading:
 ```go
 // VNC servers send RFB protocol version immediately upon connection
 // Example: "RFB 003.008\n"
@@ -162,13 +162,10 @@ line, err := reader.ReadString('\n')
 if err != nil {
     return ""
 }
-banner := strings.TrimSpace(line)
-// Validate VNC/RFB banner format
-if port == 5900 && strings.HasPrefix(banner, "RFB ") {
-    return banner
-}
-return banner
+return strings.TrimSpace(line)
 ```
+
+The function reads the first line from any TCP connection. VNC servers automatically send their RFB version upon connection, so no special handling is needed - the banner is captured naturally.
 
 ### Example Output
 ```json
