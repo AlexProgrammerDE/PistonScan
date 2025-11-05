@@ -68,6 +68,22 @@ export namespace scan {
 	        this.tlsCertInfo = source["tlsCertInfo"];
 	    }
 	}
+	export class SMBInfo {
+	    computerName?: string;
+	    domain?: string;
+	    source?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SMBInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.computerName = source["computerName"];
+	        this.domain = source["domain"];
+	        this.source = source["source"];
+	    }
+	}
 	export class Result {
 	    ip: string;
 	    reachable: boolean;
@@ -80,6 +96,7 @@ export namespace scan {
 	    netbiosNames?: string[];
 	    llmnrNames?: string[];
 	    deviceName?: string;
+	    smbInfo?: SMBInfo;
 	    macAddress?: string;
 	    manufacturer?: string;
 	    osGuess?: string;
@@ -106,6 +123,7 @@ export namespace scan {
 	        this.netbiosNames = source["netbiosNames"];
 	        this.llmnrNames = source["llmnrNames"];
 	        this.deviceName = source["deviceName"];
+	        this.smbInfo = this.convertValues(source["smbInfo"], SMBInfo);
 	        this.macAddress = source["macAddress"];
 	        this.manufacturer = source["manufacturer"];
 	        this.osGuess = source["osGuess"];
@@ -134,6 +152,7 @@ export namespace scan {
 		    return a;
 		}
 	}
+	
 	
 	export class Snapshot {
 	    config: Config;
