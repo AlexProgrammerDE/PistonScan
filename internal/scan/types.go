@@ -50,6 +50,7 @@ type Result struct {
 	NetBIOSNames     []string      `json:"netbiosNames,omitempty"`
 	LLMNRNames       []string      `json:"llmnrNames,omitempty"`
 	DeviceName       string        `json:"deviceName,omitempty"`
+	SMBInfo          *SMBInfo      `json:"smbInfo,omitempty"`
 	MacAddress       string        `json:"macAddress,omitempty"`
 	Manufacturer     string        `json:"manufacturer,omitempty"`
 	OSGuess          string        `json:"osGuess,omitempty"`
@@ -73,6 +74,13 @@ type ServiceInfo struct {
 type AirPlayInfo struct {
 	Endpoint string            `json:"endpoint,omitempty"`
 	Fields   map[string]string `json:"fields,omitempty"`
+}
+
+// SMBInfo captures workstation information gathered from SMB/DCERPC endpoints.
+type SMBInfo struct {
+	ComputerName string `json:"computerName,omitempty"`
+	Domain       string `json:"domain,omitempty"`
+	Source       string `json:"source,omitempty"`
 }
 
 // Progress contains a summary of the current scan progress.

@@ -39,6 +39,7 @@ func collectHostDetails(ctx context.Context, host string) Result {
 	var mac string
 	var services []ServiceInfo
 	var airPlay *AirPlayInfo
+	var smbInfo *SMBInfo
 
 	// Launch parallel lookup operations
 	wg.Add(1)
@@ -63,6 +64,12 @@ func collectHostDetails(ctx context.Context, host string) Result {
 	go func() {
 		defer wg.Done()
 		llmnrNames = lookupLLMNR(infoCtx, host)
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		smbInfo = lookupSMBInfo(infoCtx, host)
 	}()
 
 	wg.Add(1)
@@ -98,13 +105,14 @@ func collectHostDetails(ctx context.Context, host string) Result {
 	}
 
 	manufacturer := lookupManufacturer(mac)
-	deviceName := selectDeviceName(mdnsNames, netbiosNames, llmnrNames, hostnames, airPlay)
+	deviceName := selectDeviceName(mdnsNames, netbiosNames, llmnrNames, hostnames, smbInfo, airPlay)
 	osGuess := guessOS(services)
 
 	result.Hostnames = hostnames
 	result.MDNSNames = mdnsNames
 	result.NetBIOSNames = netbiosNames
 	result.LLMNRNames = llmnrNames
+	result.SMBInfo = smbInfo
 	result.MacAddress = mac
 	result.Manufacturer = manufacturer
 	result.Services = services

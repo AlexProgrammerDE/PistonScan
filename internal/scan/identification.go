@@ -2,7 +2,7 @@ package scan
 
 import "strings"
 
-func selectDeviceName(mdns, netbios, llmnr, hostnames []string, airplay *AirPlayInfo) string {
+func selectDeviceName(mdns, netbios, llmnr, hostnames []string, smb *SMBInfo, airplay *AirPlayInfo) string {
 	// Prioritize mDNS names as they are most reliable and user-friendly
 	if len(mdns) > 0 {
 		return mdns[0]
@@ -22,6 +22,12 @@ func selectDeviceName(mdns, netbios, llmnr, hostnames []string, airplay *AirPlay
 			return name
 		}
 		if name := airplay.Fields["model"]; name != "" {
+			return name
+		}
+	}
+	// Fall back to SMB workstation data before legacy name sources
+	if smb != nil {
+		if name := strings.TrimSpace(smb.ComputerName); name != "" {
 			return name
 		}
 	}
@@ -46,6 +52,16 @@ func guessOS(services []ServiceInfo) string {
 	}
 
 	var windowsScore, linuxScore, appleScore float64
+	var networkScore, printerScore float64
+
+	networkVendors := []string{
+		"cisco", "routeros", "mikrotik", "ubiquiti", "ubnt", "edgeos", "juniper", "aruba", "fortinet", "fortigate", "meraki",
+		"tp-link", "tplink", "netgear", "d-link", "brocade", "ruckus", "palo alto", "pan-os", "sonicwall", "watchguard", "draytek",
+	}
+	printerVendors := []string{
+		"hp", "hewlett-packard", "jetdirect", "printer", "xerox", "ricoh", "kyocera", "konica", "minolta", "sharp", "lexmark",
+		"brother", "canon", "epson", "oki", "sindoh", "bizhub",
+	}
 
 	addScore := func(service ServiceInfo) {
 		name := strings.ToLower(service.Service)
@@ -61,9 +77,11 @@ func guessOS(services []ServiceInfo) string {
 			if protocol == "tcp" {
 				windowsScore += 3
 			}
-		case 137, 138, 5355:
+		case 137, 138, 3268, 5355:
 			windowsScore += 2
-		case 5357:
+		case 389, 5357, 5985, 5986:
+			windowsScore += 1.5
+		case 1433:
 			windowsScore += 1.5
 		case 548, 7000:
 			if protocol == "tcp" {
@@ -75,13 +93,20 @@ func guessOS(services []ServiceInfo) string {
 			if protocol == "tcp" {
 				linuxScore += 2.5
 			}
+		case 2049, 3306, 5432:
+			linuxScore += 1.5
 		case 631:
-			linuxScore += 2
+			linuxScore += 1.5
+			printerScore += 3
+		case 515, 9100:
+			printerScore += 4
 		case 161, 162:
-			linuxScore += 1
+			networkScore += 2.5
+		case 1723, 502, 7547, 8291, 8728, 8729:
+			networkScore += 4
 		}
 
-		if strings.Contains(name, "smb") || strings.Contains(name, "ms rpc") || strings.Contains(name, "rdp") {
+		if strings.Contains(name, "smb") || strings.Contains(name, "ms rpc") || strings.Contains(name, "rdp") || strings.Contains(name, "winrm") || strings.Contains(name, "ldap") {
 			windowsScore += 2
 		}
 		if strings.Contains(banner, "microsoft") || strings.Contains(banner, "windows") {
@@ -96,11 +121,32 @@ func guessOS(services []ServiceInfo) string {
 		if strings.Contains(name, "ssh") {
 			linuxScore += 2
 		}
-		if strings.Contains(banner, "openssh") || strings.Contains(banner, "linux") || strings.Contains(banner, "ubuntu") || strings.Contains(banner, "debian") || strings.Contains(banner, "centos") || strings.Contains(banner, "red hat") {
+		if strings.Contains(name, "redis") || strings.Contains(name, "postgres") || strings.Contains(name, "mysql") || strings.Contains(name, "nfs") {
+			linuxScore += 1.5
+		}
+		if strings.Contains(banner, "openssh") || strings.Contains(banner, "linux") || strings.Contains(banner, "ubuntu") || strings.Contains(banner, "debian") || strings.Contains(banner, "centos") || strings.Contains(banner, "red hat") || strings.Contains(banner, "synology") || strings.Contains(banner, "qnap") {
 			linuxScore += 3
 		}
 		if strings.Contains(banner, "samba") {
 			linuxScore += 1.5
+		}
+		for _, keyword := range networkVendors {
+			if strings.Contains(name, keyword) || strings.Contains(banner, keyword) {
+				networkScore += 3
+				break
+			}
+		}
+		if strings.Contains(name, "router") || strings.Contains(name, "switch") || strings.Contains(banner, "router") || strings.Contains(banner, "switch") {
+			networkScore += 2.5
+		}
+		if strings.Contains(name, "winbox") {
+			networkScore += 3
+		}
+		for _, keyword := range printerVendors {
+			if strings.Contains(name, keyword) || strings.Contains(banner, keyword) {
+				printerScore += 3
+				break
+			}
 		}
 	}
 
@@ -117,9 +163,10 @@ func guessOS(services []ServiceInfo) string {
 		{name: "Windows", score: windowsScore},
 		{name: "Linux / Unix", score: linuxScore},
 		{name: "Apple / macOS", score: appleScore},
+		{name: "Network Infrastructure", score: networkScore},
+		{name: "Printer / Scanner", score: printerScore},
 	}
 
-	// Find the top two candidates for confidence comparison
 	var top candidate
 	var second candidate
 	for _, c := range candidates {
