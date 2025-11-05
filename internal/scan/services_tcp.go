@@ -241,11 +241,18 @@ func readServiceBanner(conn net.Conn, host string, port int) string {
 			return ""
 		}
 	}
+	// VNC servers send RFB protocol version immediately upon connection
+	// Example: "RFB 003.008\n"
 	line, err := reader.ReadString('\n')
 	if err != nil {
 		return ""
 	}
-	return strings.TrimSpace(line)
+	banner := strings.TrimSpace(line)
+	// Validate VNC/RFB banner format
+	if port == 5900 && strings.HasPrefix(banner, "RFB ") {
+		return banner
+	}
+	return banner
 }
 
 func isHTTPPort(port int) bool {

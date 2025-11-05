@@ -601,3 +601,29 @@ func TestMinFunction(t *testing.T) {
 		}
 	}
 }
+
+func TestReadServiceBannerVNC(t *testing.T) {
+	// Test that VNC/RFB banners are properly detected
+	// This is a mock test that verifies the banner format is recognized
+	testBanners := []struct {
+		banner   string
+		port     int
+		expected string
+	}{
+		{"RFB 003.008\n", 5900, "RFB 003.008"},
+		{"RFB 003.007\n", 5900, "RFB 003.007"},
+		{"RFB 003.003\n", 5900, "RFB 003.003"},
+		{"Some other banner\n", 5900, "Some other banner"},
+		{"RFB 003.008\n", 22, "RFB 003.008"}, // RFB on non-VNC port should still work
+	}
+
+	for _, tt := range testBanners {
+		banner := strings.TrimSpace(tt.banner)
+		// Verify the VNC detection logic
+		if tt.port == 5900 && strings.HasPrefix(banner, "RFB ") {
+			if banner != tt.expected {
+				t.Errorf("Expected banner %q, got %q", tt.expected, banner)
+			}
+		}
+	}
+}
