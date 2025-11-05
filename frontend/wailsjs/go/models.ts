@@ -1,5 +1,19 @@
 export namespace scan {
 	
+	export class AirPlayInfo {
+	    endpoint?: string;
+	    fields?: Record<string, string>;
+	
+	    static createFrom(source: any = {}) {
+	        return new AirPlayInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.endpoint = source["endpoint"];
+	        this.fields = source["fields"];
+	    }
+	}
 	export class Config {
 	    subnet: string;
 	    threadLimit: number;
@@ -70,6 +84,9 @@ export namespace scan {
 	    manufacturer?: string;
 	    osGuess?: string;
 	    services?: ServiceInfo[];
+	    airPlay?: AirPlayInfo;
+	    discoverySources?: string[];
+	    insightScore?: number;
 	    error?: string;
 	
 	    static createFrom(source: any = {}) {
@@ -93,6 +110,9 @@ export namespace scan {
 	        this.manufacturer = source["manufacturer"];
 	        this.osGuess = source["osGuess"];
 	        this.services = this.convertValues(source["services"], ServiceInfo);
+	        this.airPlay = this.convertValues(source["airPlay"], AirPlayInfo);
+	        this.discoverySources = source["discoverySources"];
+	        this.insightScore = source["insightScore"];
 	        this.error = source["error"];
 	    }
 	
