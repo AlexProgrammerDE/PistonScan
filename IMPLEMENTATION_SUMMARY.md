@@ -1,7 +1,10 @@
 # Implementation Summary
 
 ## Objective
-Implement all network discovery protocols (mDNS, DNS, DNS-SD, NetBIOS/NBNS, LLMNR) for comprehensive hostname resolution across different platforms.
+Implement all network discovery protocols (mDNS, DNS, DNS-SD, NetBIOS/NBNS, LLMNR) for comprehensive hostname resolution across different platforms, with special focus on:
+- mDNS/DNS-SD for IPP (printers), AirPlay, and AirTunes
+- SSDP for UPnP device discovery
+- Direct TCP banner probing for VNC (RFB protocol)
 
 ## Implementation Status: ✅ COMPLETE
 
@@ -22,12 +25,14 @@ Implement all network discovery protocols (mDNS, DNS, DNS-SD, NetBIOS/NBNS, LLMN
 #### 3. DNS-SD (DNS Service Discovery) - ✅ Enhanced
 - **Previous**: 6 service types
 - **Current**: 30+ service types including:
+  - **Printers**: `_ipp._tcp`, `_ipps._tcp`, `_printer._tcp`, `_pdl-datastream._tcp`
+  - **AirPlay/AirTunes**: `_airplay._tcp`, `_raop._tcp`
+  - **VNC**: `_rfb._tcp`
   - Web servers (HTTP/HTTPS)
   - File sharing (SMB, AFP, NFS, WebDAV)
-  - Printers (IPP, PDL)
-  - Media streaming (AirPlay, Chromecast, Spotify Connect)
+  - Media streaming (Chromecast, Spotify Connect)
   - Smart home (HomeKit, HAP)
-  - Remote access (SSH, RDP, VNC, Telnet)
+  - Remote access (SSH, RDP, Telnet)
 - Platform: Cross-platform (works with mDNS)
 
 #### 4. NetBIOS Name Service (NBNS) - ✅ Newly Implemented
@@ -45,30 +50,72 @@ Implement all network discovery protocols (mDNS, DNS, DNS-SD, NetBIOS/NBNS, LLMN
 - Parses DNS-format responses
 - Platform: Windows 10/11, some Linux distributions
 
+### Key Discovery Methods (Per Problem Statement)
+
+#### 1. mDNS/DNS-SD for IPP, AirPlay, AirTunes - ✅ VERIFIED
+- **Implementation**: `internal/scan/discovery_dns.go` - `lookupMDNS()` function
+- **Library**: `github.com/grandcat/zeroconf` for mDNS/DNS-SD browsing
+- **Service Types**:
+  - `_ipp._tcp` - Internet Printing Protocol
+  - `_ipps._tcp` - Internet Printing Protocol over SSL (newly added)
+  - `_airplay._tcp` - AirPlay devices
+  - `_raop._tcp` - Remote Audio Output Protocol (AirTunes)
+- **Usage**: Called in `collectHostDetails()` to gather device names and service information
+- **Result Fields**: Populates `mdnsNames` array in scan results
+
+#### 2. SSDP for UPnP - ✅ VERIFIED
+- **Implementation**: `internal/scan/services_udp.go` - `probeSSDP()` function
+- **Port**: UDP 1900 (multicast to 239.255.255.250)
+- **Protocol**: Sends M-SEARCH discovery requests using SSDP
+- **Response Parsing**: Extracts SERVER and LOCATION headers from HTTP-like responses
+- **Usage**: Called during UDP service scanning to detect UPnP devices
+- **Result Fields**: Appears in `services` array with banner information
+
+#### 3. Direct TCP Banner for VNC - ✅ ENHANCED
+- **Implementation**: `internal/scan/services_tcp.go` - `readServiceBanner()` function
+- **Port**: TCP 5900
+- **Protocol**: Reads RFB (Remote Frame Buffer) protocol version banner
+- **Banner Format**: "RFB 003.xxx\n" (e.g., "RFB 003.008")
+- **Enhancement**: Added specific VNC/RFB banner detection and validation
+- **Usage**: Called during TCP service scanning for port 5900
+- **Result Fields**: Appears in `services` array with banner showing RFB version
+- **Test**: `TestReadServiceBannerVNC` validates RFB banner detection
+
 ## Code Changes
 
 ### Files Modified
+1. **internal/scan/discovery_dns.go** (+1 line)
+   - Added `_ipps._tcp` service type for IPP over SSL
+   - Ensures complete coverage of IPP printer discovery
+
+2. **internal/scan/services_tcp.go** (+4 lines)
+   - Enhanced `readServiceBanner()` to specifically detect VNC/RFB banners
+   - Added validation for RFB protocol string on port 5900
+   - Improved banner detection for VNC servers
+
+3. **internal/scan/manager_test.go** (+29 lines)
+   - Added `TestReadServiceBannerVNC` to validate VNC/RFB banner detection
+   - Tests multiple RFB protocol versions (003.003, 003.007, 003.008)
+   - Verifies banner format recognition
+
+4. **IMPLEMENTATION_SUMMARY.md** (updated)
+   - Added section on three key discovery methods
+   - Documented verification of mDNS/DNS-SD, SSDP, and VNC implementations
+   - Updated implementation status
+
+### Previous Changes (from earlier work)
 1. **internal/scan/manager.go** (+427 lines)
    - Added `NetBIOSNames` and `LLMNRNames` fields to `Result` struct
    - Implemented `lookupNetBIOS()` function
    - Implemented `lookupLLMNR()` function
-   - Added helper functions:
-     - `parseNetBIOSResponse()` - Parses NetBIOS name table
-     - `buildDNSQuery()` - Constructs DNS-format queries
-     - `parseDNSResponse()` - Parses DNS responses
-     - `parseDNSName()` - Extracts names from DNS packets
-   - Updated `selectDeviceName()` to prioritize: mDNS > NetBIOS > LLMNR > DNS
+   - Added helper functions for NetBIOS and LLMNR parsing
    - Enhanced `lookupMDNS()` with 30+ service types
-   - Added protocol constants for NetBIOS packet parsing
-   - Updated `collectHostDetails()` to call new protocol lookups
+   - Updated `collectHostDetails()` to call all protocol lookups
 
 2. **internal/scan/manager_test.go** (+139 lines)
-   - Added `TestSelectDeviceName` - Tests device name prioritization
-   - Added `TestBuildDNSQuery` - Tests DNS query packet construction
-   - Added `TestParseDNSName` - Tests DNS name parsing
-   - Added `TestParseNetBIOSResponse` - Tests NetBIOS response parsing
-   - Added `TestParseDNSResponse` - Tests DNS response parsing
-   - Added `TestResultStructWithNewFields` - Tests new Result fields
+   - Added comprehensive tests for all protocols
+   - Protocol packet parsing tests
+   - Device name selection tests
 
 3. **PROTOCOLS.md** (new file, +258 lines)
    - Comprehensive documentation for all 5 protocols

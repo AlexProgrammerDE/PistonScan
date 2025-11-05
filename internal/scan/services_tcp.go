@@ -241,6 +241,8 @@ func readServiceBanner(conn net.Conn, host string, port int) string {
 			return ""
 		}
 	}
+	// VNC servers send RFB protocol version immediately upon connection
+	// Example: "RFB 003.008\n"
 	line, err := reader.ReadString('\n')
 	if err != nil {
 		return ""

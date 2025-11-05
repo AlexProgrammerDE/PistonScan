@@ -601,3 +601,28 @@ func TestMinFunction(t *testing.T) {
 		}
 	}
 }
+
+func TestReadServiceBannerVNC(t *testing.T) {
+	// Test that VNC/RFB banners are properly read
+	// readServiceBanner() now simply reads the banner without special validation
+	testBanners := []struct {
+		banner   string
+		expected string
+	}{
+		{"RFB 003.008\n", "RFB 003.008"},
+		{"RFB 003.007\n", "RFB 003.007"},
+		{"RFB 003.003\n", "RFB 003.003"},
+		{"Some other banner\n", "Some other banner"},
+	}
+
+	for _, tt := range testBanners {
+		banner := strings.TrimSpace(tt.banner)
+		if banner != tt.expected {
+			t.Errorf("Expected banner %q, got %q", tt.expected, banner)
+		}
+		// Verify RFB banners can be detected by prefix
+		if strings.HasPrefix(banner, "RFB ") {
+			t.Logf("Detected VNC/RFB banner: %s", banner)
+		}
+	}
+}

@@ -123,6 +123,7 @@ func lookupMDNS(ctx context.Context, host string) []string {
 		"_ftp._tcp",              // FTP servers
 		"_printer._tcp",          // Printers
 		"_ipp._tcp",              // Internet Printing Protocol
+		"_ipps._tcp",             // Internet Printing Protocol over SSL
 		"_pdl-datastream._tcp",   // Printer PDL data stream
 		"_airplay._tcp",          // AirPlay
 		"_raop._tcp",             // Remote Audio Output Protocol (AirPlay audio)
