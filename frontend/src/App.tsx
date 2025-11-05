@@ -75,6 +75,16 @@ const defaultProgress: ScanProgress = {total: 0, completed: 0, active: 0, status
 
 type SortKey = 'insights' | 'latency' | 'ip';
 
+type ObservationTone = 'info' | 'warn' | 'error' | 'muted' | 'success';
+
+interface Observation {
+    label: string;
+    tone: ObservationTone;
+}
+
+const httpPorts = new Set([80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 8000, 8008, 8080, 8081, 8888]);
+const httpsPorts = new Set([443, 4443, 8443, 9443]);
+
 const normaliseError = (error: unknown): string => {
     if (typeof error === 'string') {
         return error;
@@ -200,6 +210,120 @@ function App() {
                 </span>
             );
         });
+    };
+
+    const getPreferredHostname = (item: ScanResult) => {
+        const dnsHost = item.hostnames?.find((name) => !!name);
+        if (dnsHost) {
+            return dnsHost;
+        }
+        const mdnsHost = item.mdnsNames?.find((name) => !!name);
+        if (mdnsHost) {
+            return mdnsHost;
+        }
+        return item.ip;
+    };
+
+    const buildServiceUrl = (service: ServiceInfo, item: ScanResult): string | null => {
+        if (service.protocol.toLowerCase() !== 'tcp') {
+            return null;
+        }
+
+        const name = service.service.toLowerCase();
+        const hasTls = Boolean(service.tlsCertInfo);
+        const isHttpsCandidate = hasTls || httpsPorts.has(service.port) || name.includes('https');
+        const isHttpCandidate = httpPorts.has(service.port) || name.includes('http') || name.includes('web');
+
+        if (!isHttpsCandidate && !isHttpCandidate) {
+            return null;
+        }
+
+        const scheme = isHttpsCandidate ? 'https' : 'http';
+        const defaultPort = scheme === 'https' ? 443 : 80;
+        const host = getPreferredHostname(item);
+        const needsPort = service.port !== defaultPort;
+        const portSuffix = needsPort ? `:${service.port}` : '';
+
+        return `${scheme}://${host}${portSuffix}`;
+    };
+
+    const buildObservations = (item: ScanResult): Observation[] => {
+        const observations: Observation[] = [];
+        const addObservation = (observation: Observation) => {
+            if (!observations.some((existing) => existing.label === observation.label)) {
+                observations.push(observation);
+            }
+        };
+
+        if (item.error) {
+            addObservation({label: item.error, tone: 'error'});
+            return observations;
+        }
+
+        if (!item.reachable) {
+            addObservation({label: 'No response detected', tone: 'muted'});
+        } else {
+            if (item.latencyMs > 0 && item.latencyMs <= 5) {
+                addObservation({label: 'Very low latency', tone: 'success'});
+            } else if (item.latencyMs > 120) {
+                addObservation({label: `High latency (${formatLatency(item.latencyMs)} ms)`, tone: 'warn'});
+            }
+        }
+
+        const hostnameLabel = item.hostnames?.[0] ?? item.mdnsNames?.[0];
+        if (hostnameLabel) {
+            addObservation({label: `Hostname: ${hostnameLabel}`, tone: 'info'});
+        }
+
+        if (item.discoverySources && item.discoverySources.length > 0) {
+            const preferredSources = item.discoverySources.slice(0, 2);
+            preferredSources.forEach((source) => {
+                addObservation({label: `Seen via ${source}`, tone: 'muted'});
+            });
+        }
+
+        if (item.services && item.services.length > 0) {
+            item.services.forEach((service) => {
+                const name = service.service.toLowerCase();
+                if (service.port === 3389 || name.includes('rdp')) {
+                    addObservation({label: 'RDP exposed', tone: 'warn'});
+                }
+                if (service.port === 445 || name.includes('smb')) {
+                    addObservation({label: 'SMB file sharing', tone: 'warn'});
+                }
+                if (service.port === 22 || name.includes('ssh')) {
+                    addObservation({label: 'SSH remote access', tone: 'info'});
+                }
+                if (service.port === 21 || name.includes('ftp')) {
+                    addObservation({label: 'FTP (unencrypted)', tone: 'warn'});
+                }
+                if (service.port === 23 || name.includes('telnet')) {
+                    addObservation({label: 'Telnet (unencrypted)', tone: 'warn'});
+                }
+                if (service.port === 25 || name.includes('smtp')) {
+                    addObservation({label: 'SMTP service', tone: 'info'});
+                }
+                if (httpsPorts.has(service.port) || name.includes('https') || service.tlsCertInfo) {
+                    addObservation({label: `HTTPS on ${service.port}`, tone: 'success'});
+                } else if (httpPorts.has(service.port) || name.includes('http')) {
+                    addObservation({label: `HTTP on ${service.port}`, tone: 'warn'});
+                }
+                if (service.banner) {
+                    const banner = service.banner.toLowerCase();
+                    if (banner.includes('openssh')) {
+                        addObservation({label: 'OpenSSH banner', tone: 'info'});
+                    } else if (banner.includes('microsoft')) {
+                        addObservation({label: 'Microsoft service banner', tone: 'info'});
+                    }
+                }
+            });
+        }
+
+        if (item.osGuess && item.osGuess !== 'Unknown') {
+            addObservation({label: `OS likely ${item.osGuess}`, tone: 'info'});
+        }
+
+        return observations.slice(0, 5);
     };
 
     const toggleExpanded = (ip: string) => {
@@ -578,6 +702,7 @@ function App() {
                                 const insightScore = item.insightScore ?? 0;
                                 const insightPercent = maxInsightScore > 0 ? Math.round((insightScore / maxInsightScore) * 100) : 0;
                                 const insightSources = item.discoverySources ?? [];
+                                const observations = buildObservations(item);
                                 return (
                                     <>
                                         <tr key={`${item.ip}-summary`} className={expanded ? 'expanded' : ''}>
@@ -626,10 +751,19 @@ function App() {
                                                 </span>
                                             </td>
                                             <td>
-                                                {item.error ? (
-                                                    <span className="error-text">{item.error}</span>
+                                                {observations.length > 0 ? (
+                                                    <div className="observation-pills">
+                                                        {observations.map((observation) => (
+                                                            <span
+                                                                key={observation.label}
+                                                                className={`observation-pill tone-${observation.tone}`}
+                                                            >
+                                                                {observation.label}
+                                                            </span>
+                                                        ))}
+                                                    </div>
                                                 ) : (
-                                                    <span className="meta">{item.ttl ? `TTL ${item.ttl}` : '—'} • {item.attempts} checks</span>
+                                                    <span className="meta">No observations</span>
                                                 )}
                                             </td>
                                         </tr>
@@ -685,23 +819,35 @@ function App() {
                                                             <h3>Services ({item.services?.length ?? 0})</h3>
                                                             {item.services && item.services.length > 0 ? (
                                                                 <ul className="service-list">
-                                                                    {item.services.map((service) => (
-                                                                        <li key={`${service.protocol}-${service.port}-${service.service}`}>
-                                                                            <div className="service-header">
-                                                                                <span>
-                                                                                    {service.service} ({service.port}/
-                                                                                    {service.protocol.toUpperCase()})
-                                                                                </span>
+                                                                    {item.services.map((service) => {
+                                                                        const serviceLabel = `${service.service} (${service.port}/${service.protocol.toUpperCase()})`;
+                                                                        const serviceUrl = buildServiceUrl(service, item);
+                                                                        return (
+                                                                            <li key={`${service.protocol}-${service.port}-${service.service}`}>
+                                                                                <div className="service-header">
+                                                                                    {serviceUrl ? (
+                                                                                        <a
+                                                                                            href={serviceUrl}
+                                                                                            target="_blank"
+                                                                                            rel="noopener noreferrer"
+                                                                                            className="service-link"
+                                                                                        >
+                                                                                            {serviceLabel}
+                                                                                        </a>
+                                                                                    ) : (
+                                                                                        <span>{serviceLabel}</span>
+                                                                                    )}
+                                                                                    {service.tlsCertInfo && (
+                                                                                        <span className="tls-chip">TLS</span>
+                                                                                    )}
+                                                                                </div>
+                                                                                {service.banner && <div className="service-banner">{service.banner}</div>}
                                                                                 {service.tlsCertInfo && (
-                                                                                    <span className="tls-chip">TLS</span>
+                                                                                    <div className="service-banner tls">{service.tlsCertInfo}</div>
                                                                                 )}
-                                                                            </div>
-                                                                            {service.banner && <div className="service-banner">{service.banner}</div>}
-                                                                            {service.tlsCertInfo && (
-                                                                                <div className="service-banner tls">{service.tlsCertInfo}</div>
-                                                                            )}
-                                                                        </li>
-                                                                    ))}
+                                                                            </li>
+                                                                        );
+                                                                    })}
                                                                 </ul>
                                                             ) : (
                                                                 <p>—</p>
