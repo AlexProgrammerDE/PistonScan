@@ -78,15 +78,23 @@ func TestNormaliseMAC(t *testing.T) {
 }
 
 func TestGuessOS(t *testing.T) {
-	services := []ServiceInfo{{Port: 445, Protocol: "tcp", Service: "SMB"}}
-	if guess := guessOS(120, services); !strings.Contains(guess, "Windows") {
+	windowsServices := []ServiceInfo{{Port: 445, Protocol: "tcp", Service: "SMB"}}
+	if guess := guessOS(windowsServices); guess != "Windows" {
 		t.Fatalf("expected Windows guess, got %s", guess)
 	}
-	if guess := guessOS(40, []ServiceInfo{{Port: 7000, Protocol: "tcp", Service: "AirPlay"}}); !strings.Contains(guess, "Apple") {
+
+	appleServices := []ServiceInfo{{Port: 7000, Protocol: "tcp", Service: "AirPlay"}}
+	if guess := guessOS(appleServices); guess != "Apple / macOS" {
 		t.Fatalf("expected Apple guess, got %s", guess)
 	}
-	if guess := guessOS(220, nil); guess != "Network Appliance" {
-		t.Fatalf("expected network appliance, got %s", guess)
+
+	linuxServices := []ServiceInfo{{Port: 22, Protocol: "tcp", Service: "SSH", Banner: "SSH-2.0-OpenSSH_8.9p1 Ubuntu"}}
+	if guess := guessOS(linuxServices); guess != "Linux / Unix" {
+		t.Fatalf("expected Linux guess, got %s", guess)
+	}
+
+	if guess := guessOS([]ServiceInfo{{Port: 80, Protocol: "tcp", Service: "HTTP"}}); guess != "Unknown" {
+		t.Fatalf("expected Unknown guess for generic services, got %s", guess)
 	}
 }
 

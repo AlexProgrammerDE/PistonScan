@@ -92,7 +92,7 @@ func collectHostDetails(ctx context.Context, host string) Result {
 
 	manufacturer := lookupManufacturer(mac)
 	deviceName := selectDeviceName(mdnsNames, netbiosNames, llmnrNames, hostnames)
-	osGuess := guessOS(summary.TTL, services)
+	osGuess := guessOS(services)
 
 	result.Hostnames = hostnames
 	result.MDNSNames = mdnsNames

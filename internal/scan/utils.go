@@ -30,7 +30,8 @@ func uniqueStrings(values []string) []string {
 	seen := make(map[string]struct{}, len(values))
 	var out []string
 	for _, v := range values {
-		normalized := strings.TrimSuffix(v, ".")
+		normalized := strings.TrimSpace(v)
+		normalized = strings.TrimSuffix(normalized, ".")
 		if normalized == "" {
 			continue
 		}
