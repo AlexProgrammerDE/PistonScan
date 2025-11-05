@@ -1,4 +1,4 @@
-import {ChangeEvent, useCallback, useEffect, useMemo, useState} from 'react';
+import {ChangeEvent, Fragment, useCallback, useEffect, useMemo, useState} from 'react';
 import './App.css';
 import {
     CancelScan,
@@ -32,6 +32,11 @@ interface ServiceInfo {
     tlsCertInfo?: string;
 }
 
+interface AirPlayInfo {
+    endpoint?: string;
+    fields?: Record<string, string>;
+}
+
 interface ScanResult {
     ip: string;
     reachable: boolean;
@@ -48,6 +53,7 @@ interface ScanResult {
     manufacturer?: string;
     osGuess?: string;
     services?: ServiceInfo[];
+    airPlay?: AirPlayInfo;
     discoverySources?: string[];
     insightScore?: number;
     error?: string;
@@ -212,6 +218,48 @@ function App() {
         });
     };
 
+    const getAirPlayEntries = (info?: AirPlayInfo): [string, string][] => {
+        if (!info?.fields) {
+            return [];
+        }
+        return Object.entries(info.fields).sort(([a], [b]) => a.localeCompare(b));
+    };
+
+    const getAirPlayField = (info: AirPlayInfo | undefined, key: string): string | undefined => {
+        if (!info?.fields) {
+            return undefined;
+        }
+        if (info.fields[key]) {
+            return info.fields[key];
+        }
+        const match = Object.entries(info.fields).find(([entryKey]) => entryKey.toLowerCase() === key.toLowerCase());
+        return match?.[1];
+    };
+
+    const renderAirPlayMetadata = (info?: AirPlayInfo) => {
+        const entries = getAirPlayEntries(info);
+        if (!info?.endpoint && entries.length === 0) {
+            return null;
+        }
+
+        return (
+            <dl className="metadata-grid">
+                {info?.endpoint && (
+                    <>
+                        <dt>Source</dt>
+                        <dd>{info.endpoint}</dd>
+                    </>
+                )}
+                {entries.map(([key, value]) => (
+                    <Fragment key={key}>
+                        <dt>{key}</dt>
+                        <dd>{value}</dd>
+                    </Fragment>
+                ))}
+            </dl>
+        );
+    };
+
     const getPreferredHostname = (item: ScanResult) => {
         const dnsHost = item.hostnames?.find((name) => !!name);
         if (dnsHost) {
@@ -317,6 +365,19 @@ function App() {
                     }
                 }
             });
+        }
+
+        if (item.airPlay?.fields && Object.keys(item.airPlay.fields).length > 0) {
+            const model =
+                getAirPlayField(item.airPlay, 'model') ??
+                getAirPlayField(item.airPlay, 'hwmodel') ??
+                getAirPlayField(item.airPlay, 'deviceid') ??
+                getAirPlayField(item.airPlay, 'name');
+            if (model) {
+                addObservation({label: `AirPlay: ${model}`, tone: 'info'});
+            } else {
+                addObservation({label: 'AirPlay service metadata', tone: 'info'});
+            }
         }
 
         if (item.osGuess && item.osGuess !== 'Unknown') {
@@ -703,6 +764,7 @@ function App() {
                                 const insightPercent = maxInsightScore > 0 ? Math.round((insightScore / maxInsightScore) * 100) : 0;
                                 const insightSources = item.discoverySources ?? [];
                                 const observations = buildObservations(item);
+                                const airPlayMetadata = renderAirPlayMetadata(item.airPlay);
                                 return (
                                     <>
                                         <tr key={`${item.ip}-summary`} className={expanded ? 'expanded' : ''}>
@@ -815,6 +877,12 @@ function App() {
                                                                 <dd>{renderList(item.llmnrNames)}</dd>
                                                             </dl>
                                                         </div>
+                                                        {airPlayMetadata && (
+                                                            <div className="detail-card">
+                                                                <h3>AirPlay metadata</h3>
+                                                                {airPlayMetadata}
+                                                            </div>
+                                                        )}
                                                         <div className="detail-card">
                                                             <h3>Services ({item.services?.length ?? 0})</h3>
                                                             {item.services && item.services.length > 0 ? (

@@ -2,10 +2,28 @@ package scan
 
 import "strings"
 
-func selectDeviceName(mdns, netbios, llmnr, hostnames []string) string {
+func selectDeviceName(mdns, netbios, llmnr, hostnames []string, airplay *AirPlayInfo) string {
 	// Prioritize mDNS names as they are most reliable and user-friendly
 	if len(mdns) > 0 {
 		return mdns[0]
+	}
+	// Prefer AirPlay-advertised names when available
+	if airplay != nil && len(airplay.Fields) > 0 {
+		if name := airplay.Fields["name"]; name != "" {
+			return name
+		}
+		if name := airplay.Fields["deviceName"]; name != "" {
+			return name
+		}
+		if name := airplay.Fields["pi"]; name != "" {
+			return name
+		}
+		if name := airplay.Fields["deviceid"]; name != "" {
+			return name
+		}
+		if name := airplay.Fields["model"]; name != "" {
+			return name
+		}
 	}
 	// NetBIOS names are common on Windows networks
 	if len(netbios) > 0 {

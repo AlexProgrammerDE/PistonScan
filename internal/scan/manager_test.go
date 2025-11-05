@@ -187,28 +187,39 @@ func TestSelectDeviceName(t *testing.T) {
 	dns := []string{"dns-device"}
 
 	// mDNS takes priority
-	if name := selectDeviceName(mdns, netbios, llmnr, dns); name != "mdns-device" {
+	if name := selectDeviceName(mdns, netbios, llmnr, dns, nil); name != "mdns-device" {
 		t.Fatalf("expected mDNS name to take priority, got %s", name)
 	}
 
 	// NetBIOS takes priority when no mDNS
-	if name := selectDeviceName(nil, netbios, llmnr, dns); name != "netbios-device" {
+	if name := selectDeviceName(nil, netbios, llmnr, dns, nil); name != "netbios-device" {
 		t.Fatalf("expected NetBIOS name when no mDNS, got %s", name)
 	}
 
 	// LLMNR takes priority when no mDNS or NetBIOS
-	if name := selectDeviceName(nil, nil, llmnr, dns); name != "llmnr-device" {
+	if name := selectDeviceName(nil, nil, llmnr, dns, nil); name != "llmnr-device" {
 		t.Fatalf("expected LLMNR name when no mDNS or NetBIOS, got %s", name)
 	}
 
 	// DNS as fallback
-	if name := selectDeviceName(nil, nil, nil, dns); name != "dns-device" {
+	if name := selectDeviceName(nil, nil, nil, dns, nil); name != "dns-device" {
 		t.Fatalf("expected DNS name as fallback, got %s", name)
 	}
 
 	// Empty when nothing available
-	if name := selectDeviceName(nil, nil, nil, nil); name != "" {
+	if name := selectDeviceName(nil, nil, nil, nil, nil); name != "" {
 		t.Fatalf("expected empty name when no sources available, got %s", name)
+	}
+
+	// AirPlay metadata when other sources unavailable
+	airPlay := &AirPlayInfo{Fields: map[string]string{"name": "Living Room Apple TV"}}
+	if name := selectDeviceName(nil, nil, nil, nil, airPlay); name != "Living Room Apple TV" {
+		t.Fatalf("expected AirPlay name when available, got %s", name)
+	}
+
+	// AirPlay should not override mDNS
+	if name := selectDeviceName(mdns, netbios, llmnr, dns, airPlay); name != "mdns-device" {
+		t.Fatalf("expected mDNS to override AirPlay metadata, got %s", name)
 	}
 }
 

@@ -38,6 +38,7 @@ func collectHostDetails(ctx context.Context, host string) Result {
 	var hostnames, mdnsNames, netbiosNames, llmnrNames []string
 	var mac string
 	var services []ServiceInfo
+	var airPlay *AirPlayInfo
 
 	// Launch parallel lookup operations
 	wg.Add(1)
@@ -90,8 +91,14 @@ func collectHostDetails(ctx context.Context, host string) Result {
 	// Merge TCP and UDP services
 	services = append(tcpServices, udpServices...)
 
+	if shouldQueryAirPlay(services) {
+		airplayCtx, cancelAirplay := context.WithTimeout(ctx, 2*time.Second)
+		airPlay = fetchAirPlayInfo(airplayCtx, host)
+		cancelAirplay()
+	}
+
 	manufacturer := lookupManufacturer(mac)
-	deviceName := selectDeviceName(mdnsNames, netbiosNames, llmnrNames, hostnames)
+	deviceName := selectDeviceName(mdnsNames, netbiosNames, llmnrNames, hostnames, airPlay)
 	osGuess := guessOS(services)
 
 	result.Hostnames = hostnames
@@ -101,6 +108,7 @@ func collectHostDetails(ctx context.Context, host string) Result {
 	result.MacAddress = mac
 	result.Manufacturer = manufacturer
 	result.Services = services
+	result.AirPlay = airPlay
 	result.DeviceName = deviceName
 	result.OSGuess = osGuess
 

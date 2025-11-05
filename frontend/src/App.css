@@ -543,6 +543,27 @@ button:not(:disabled):active {
     color: #e4ecff;
 }
 
+.metadata-grid {
+    margin: 0;
+    display: grid;
+    grid-template-columns: 120px 1fr;
+    gap: 0.35rem 0.75rem;
+    font-size: 0.9rem;
+    word-break: break-word;
+}
+
+.metadata-grid dt {
+    color: #8aa6ce;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.05em;
+}
+
+.metadata-grid dd {
+    margin: 0;
+    color: #f0f4ff;
+}
+
 .latency-samples-wrapper {
     display: flex;
     flex-wrap: wrap;
