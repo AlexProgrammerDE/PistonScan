@@ -5,7 +5,7 @@ go 1.24.1
 toolchain go1.25.5
 
 require (
-	github.com/endobit/oui v0.5.0
+	github.com/endobit/oui v0.6.0
 	github.com/go-ping/ping v1.2.0
 	github.com/grandcat/zeroconf v1.0.0
 	github.com/oiweiwei/go-msrpc v1.2.12
