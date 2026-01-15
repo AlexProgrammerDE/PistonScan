@@ -2,13 +2,13 @@ module pistonscan
 
 go 1.24.1
 
-toolchain go1.25.5
+toolchain go1.25.6
 
 require (
 	github.com/endobit/oui v0.6.0
 	github.com/go-ping/ping v1.2.0
 	github.com/grandcat/zeroconf v1.0.0
-	github.com/oiweiwei/go-msrpc v1.2.12
+	github.com/oiweiwei/go-msrpc v1.2.13
 	github.com/wailsapp/wails/v2 v2.11.0
 	howett.net/plist v1.0.1
 )
@@ -51,11 +51,11 @@ require (
 	github.com/valyala/fasttemplate v1.2.2 // indirect
 	github.com/wailsapp/go-webview2 v1.0.22 // indirect
 	github.com/wailsapp/mimetype v1.4.1 // indirect
-	golang.org/x/crypto v0.36.0 // indirect
-	golang.org/x/mod v0.23.0 // indirect
-	golang.org/x/net v0.38.0 // indirect
-	golang.org/x/sync v0.12.0 // indirect
-	golang.org/x/sys v0.31.0 // indirect
-	golang.org/x/text v0.23.0 // indirect
-	golang.org/x/tools v0.30.0 // indirect
+	golang.org/x/crypto v0.45.0 // indirect
+	golang.org/x/mod v0.29.0 // indirect
+	golang.org/x/net v0.47.0 // indirect
+	golang.org/x/sync v0.18.0 // indirect
+	golang.org/x/sys v0.38.0 // indirect
+	golang.org/x/text v0.31.0 // indirect
+	golang.org/x/tools v0.38.0 // indirect
 )
