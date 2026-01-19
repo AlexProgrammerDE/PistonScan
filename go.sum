@@ -86,6 +86,8 @@ github.com/oiweiwei/go-msrpc v1.2.12 h1:gaxnv1cyX3v9l+NNxyr4ONyvh/mnmh8Egel9r8zx
 github.com/oiweiwei/go-msrpc v1.2.12/go.mod h1:T6/ENmAoD1nYCr3NW8PS8AjIX0tZEAL7yO0tsejtK18=
 github.com/oiweiwei/go-msrpc v1.2.13 h1:Pqre/AltoiEodg7w4suaEoqLt0R1QSfSToR6pBJ2l14=
 github.com/oiweiwei/go-msrpc v1.2.13/go.mod h1:G3X4TxaYwTyeg4HQKyRGzbz1OCnXBonGa/qnHIEQngQ=
+github.com/oiweiwei/go-msrpc v1.2.14 h1:/3a3vPtBlh9HgOziRf4gJZiJzIHTJyIdF37SsARSdXM=
+github.com/oiweiwei/go-msrpc v1.2.14/go.mod h1:G3X4TxaYwTyeg4HQKyRGzbz1OCnXBonGa/qnHIEQngQ=
 github.com/oiweiwei/go-smb2.fork v1.0.0 h1:xHq/eYPM8hQEO/nwCez8YwHWHC8mlcsgw/Neu52fPN4=
 github.com/oiweiwei/go-smb2.fork v1.0.0/go.mod h1:h0CzLVvGAmq39izdYVHKyI5cLv6aHdbQAMKEe4dz4N8=
 github.com/oiweiwei/gokrb5.fork/v9 v9.0.5 h1:KdqbPKT6L/1/p7AZ8CNW+pUOsNdgJBeCU5oEpm+eS5A=
