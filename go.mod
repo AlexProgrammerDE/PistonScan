@@ -2,7 +2,7 @@ module pistonscan
 
 go 1.24.1
 
-toolchain go1.25.6
+toolchain go1.25.7
 
 require (
 	github.com/endobit/oui v0.6.0
