@@ -9,11 +9,12 @@ require (
 	github.com/go-ping/ping v1.2.0
 	github.com/grandcat/zeroconf v1.0.0
 	github.com/oiweiwei/go-msrpc v1.2.18
-	github.com/wailsapp/wails/v2 v2.11.0
-	howett.net/plist v1.0.1
+	github.com/wailsapp/wails/v2 v2.12.0
+	howett.net/plist v1.0.2-0.20250314012144-ee69052608d9
 )
 
 require (
+	git.sr.ht/~jackmordaunt/go-toast/v2 v2.0.3 // indirect
 	github.com/bep/debounce v1.2.1 // indirect
 	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
 	github.com/geoffgarside/ber v1.1.0 // indirect
