@@ -8,7 +8,7 @@ require (
 	github.com/endobit/oui v0.7.0
 	github.com/go-ping/ping v1.2.0
 	github.com/grandcat/zeroconf v1.0.0
-	github.com/oiweiwei/go-msrpc v1.2.18
+	github.com/oiweiwei/go-msrpc v1.3.0
 	github.com/wailsapp/wails/v2 v2.12.0
 	howett.net/plist v1.0.2-0.20250314012144-ee69052608d9
 )
