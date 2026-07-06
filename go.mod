@@ -9,7 +9,7 @@ require (
 	github.com/go-ping/ping v1.2.0
 	github.com/grandcat/zeroconf v1.0.0
 	github.com/oiweiwei/go-msrpc v1.5.1
-	github.com/wailsapp/wails/v2 v2.12.0
+	github.com/wailsapp/wails/v2 v2.13.0
 	howett.net/plist v1.0.2-0.20250314012144-ee69052608d9
 )
 
