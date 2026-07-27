@@ -8,7 +8,7 @@ require (
 	github.com/endobit/oui v0.7.0
 	github.com/go-ping/ping v1.2.0
 	github.com/grandcat/zeroconf v1.0.0
-	github.com/oiweiwei/go-msrpc v1.5.1
+	github.com/oiweiwei/go-msrpc v1.5.2
 	github.com/wailsapp/wails/v2 v2.13.0
 	howett.net/plist v1.0.2-0.20250314012144-ee69052608d9
 )
@@ -42,7 +42,7 @@ require (
 	github.com/miekg/dns v1.1.72 // indirect
 	github.com/oiweiwei/go-math v1.0.0 // indirect
 	github.com/oiweiwei/go-oem v1.0.0 // indirect
-	github.com/oiweiwei/go-smb2.fork v1.0.1 // indirect
+	github.com/oiweiwei/go-smb2.fork v1.0.2 // indirect
 	github.com/oiweiwei/gokrb5.fork/v9 v9.0.6 // indirect
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c // indirect
 	github.com/pkg/errors v0.9.1 // indirect
@@ -54,11 +54,11 @@ require (
 	github.com/valyala/fasttemplate v1.2.2 // indirect
 	github.com/wailsapp/go-webview2 v1.0.22 // indirect
 	github.com/wailsapp/mimetype v1.4.1 // indirect
-	golang.org/x/crypto v0.53.0 // indirect
-	golang.org/x/mod v0.36.0 // indirect
-	golang.org/x/net v0.55.0 // indirect
-	golang.org/x/sync v0.21.0 // indirect
-	golang.org/x/sys v0.46.0 // indirect
-	golang.org/x/text v0.38.0 // indirect
-	golang.org/x/tools v0.45.0 // indirect
+	golang.org/x/crypto v0.54.0 // indirect
+	golang.org/x/mod v0.37.0 // indirect
+	golang.org/x/net v0.56.0 // indirect
+	golang.org/x/sync v0.22.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
+	golang.org/x/text v0.40.0 // indirect
+	golang.org/x/tools v0.47.0 // indirect
 )
