@@ -19,7 +19,7 @@
     "typescript": "^5.0.0",
     "vite": "^7.0.0"
   },
-  "packageManager": "bun@1.4.0",
+  "packageManager": "bun@1.4.2",
   "trustedDependencies": [
     "esbuild"
   ]
