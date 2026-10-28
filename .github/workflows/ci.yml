@@ -40,7 +40,7 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version: 26
 
       - name: Build wails
         uses: dAppServer/wails-build-action@main
