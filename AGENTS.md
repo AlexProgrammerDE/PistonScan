@@ -29,3 +29,16 @@
 - Set minimum macOS versions with `CGO_CFLAGS`/`CGO_LDFLAGS` (for example `CGO_CFLAGS=-mmacosx-version-min=10.15.0`).
 - UPX-compressed binaries may trigger antivirus false positives on Windows.
 - Supported build targets include macOS (`darwin`, `darwin/amd64`, `darwin/arm64`, `darwin/universal`), Windows (`windows`, `windows/amd64`, `windows/arm64`), and Linux (`linux`, `linux/amd64`, `linux/arm64`).
+
+## React conventions
+
+- Use PascalCase for React component names. Match the existing component filename convention.
+- Use kebab-case for new hook and utility filenames, unless this repository documents another convention.
+- Use stable domain identities as React keys. Do not use array indexes as keys.
+- Use an existing `generateN` helper or stable placeholder IDs for fixed skeleton slots.
+- Keep page structure, headings, navigation, labels, and independent content mounted while data loads.
+- Show skeletons only for unresolved values, rows, and permission-dependent actions. Do not block a page on its slowest query.
+
+## Design skills
+
+- For visual design work, use `frontend-design` and `uncodixfy`.
