@@ -8,8 +8,8 @@ require (
 	github.com/endobit/oui v0.7.0
 	github.com/go-ping/ping v1.2.0
 	github.com/grandcat/zeroconf v1.0.0
-	github.com/oiweiwei/go-msrpc v1.6.5
-	github.com/wailsapp/wails/v2 v2.17.0
+	github.com/oiweiwei/go-msrpc v1.6.6
+	github.com/wailsapp/wails/v2 v2.17.1
 	howett.net/plist v1.0.2-0.20260819222228-760f9a56c6a7
 )
 
@@ -32,13 +32,13 @@ require (
 	github.com/jcmturner/goidentity/v6 v6.0.1 // indirect
 	github.com/jcmturner/gokrb5/v8 v8.4.4 // indirect
 	github.com/jcmturner/rpc/v2 v2.0.3 // indirect
-	github.com/labstack/echo/v4 v4.15.3 // indirect
+	github.com/labstack/echo/v4 v4.16.1 // indirect
 	github.com/labstack/gommon v0.5.0 // indirect
 	github.com/leaanthony/go-ansi-parser v1.6.1 // indirect
 	github.com/leaanthony/gosod v1.0.4 // indirect
 	github.com/leaanthony/slicer v1.6.0 // indirect
 	github.com/leaanthony/u v1.1.1 // indirect
-	github.com/mattn/go-colorable v0.1.14 // indirect
+	github.com/mattn/go-colorable v0.1.15 // indirect
 	github.com/mattn/go-isatty v0.0.22 // indirect
 	github.com/miekg/dns v1.1.73 // indirect
 	github.com/oiweiwei/go-math v1.0.0 // indirect
