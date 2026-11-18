@@ -10,6 +10,7 @@ require (
 	github.com/grandcat/zeroconf v1.0.0
 	github.com/oiweiwei/go-msrpc v1.6.6
 	github.com/wailsapp/wails/v2 v2.17.1
+	github.com/wailsapp/wails/v3 v3.1.0
 	howett.net/plist v1.0.2-0.20261103220614-57dc085d2783
 )
 
@@ -20,7 +21,7 @@ require (
 	github.com/gabriel-vasile/mimetype v1.4.16 // indirect
 	github.com/geoffgarside/ber v1.1.0 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
-	github.com/godbus/dbus/v5 v5.1.0 // indirect
+	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/hashicorp/go-uuid v1.0.3 // indirect
