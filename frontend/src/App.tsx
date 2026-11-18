@@ -474,9 +474,9 @@ function App() {
   const updateFormFromSnapshot = useCallback((snapshot: ScanSnapshot) => {
     if (snapshot.config) {
       setForm({
-        subnet: snapshot.config.subnet ?? "",
-        threadLimit: String(snapshot.config.threadLimit ?? 1),
-        delayMs: String(snapshot.config.delayMs ?? 0),
+        subnet: snapshot.config.subnet,
+        threadLimit: String(snapshot.config.threadLimit),
+        delayMs: String(snapshot.config.delayMs),
       });
     }
   }, []);
@@ -485,8 +485,8 @@ function App() {
     const loadSnapshot = async () => {
       try {
         const snapshot = await GetSnapshot();
-        setProgress(snapshot.progress ?? defaultProgress);
-        setResults(snapshot.results ?? []);
+        setProgress(snapshot.progress);
+        setResults(snapshot.results);
         updateFormFromSnapshot(snapshot);
       } catch (err) {
         setError(normaliseError(err));
@@ -497,10 +497,7 @@ function App() {
 
   useEffect(() => {
     const offUpdate = EventsOn("scan:update", (data: ScanUpdate) => {
-      if (!data?.result) {
-        return;
-      }
-      setProgress(data.progress ?? defaultProgress);
+      setProgress(data.progress);
       setResults((prev) => {
         const existingIndex = prev.findIndex((item) => item.ip === data.result.ip);
         if (existingIndex >= 0) {
@@ -513,9 +510,6 @@ function App() {
     });
 
     const offStatus = EventsOn("scan:status", (payload: ScanProgress) => {
-      if (!payload) {
-        return;
-      }
       setProgress(payload);
     });
 
@@ -555,8 +549,8 @@ function App() {
     await withBusy("start", async () => {
       try {
         const snapshot = await StartScan({ subnet, threadLimit, delayMs });
-        setProgress(snapshot.progress ?? defaultProgress);
-        setResults(snapshot.results ?? []);
+        setProgress(snapshot.progress);
+        setResults(snapshot.results);
         updateFormFromSnapshot(snapshot);
       } catch (err) {
         setError(normaliseError(err));
@@ -568,7 +562,7 @@ function App() {
     await withBusy("pause", async () => {
       try {
         const payload = await PauseScan();
-        setProgress(payload ?? defaultProgress);
+        setProgress(payload);
       } catch (err) {
         setError(normaliseError(err));
       }
@@ -579,7 +573,7 @@ function App() {
     await withBusy("resume", async () => {
       try {
         const payload = await ResumeScan();
-        setProgress(payload ?? defaultProgress);
+        setProgress(payload);
       } catch (err) {
         setError(normaliseError(err));
       }
@@ -590,7 +584,7 @@ function App() {
     await withBusy("cancel", async () => {
       try {
         const payload = await CancelScan();
-        setProgress(payload ?? defaultProgress);
+        setProgress(payload);
       } catch (err) {
         setError(normaliseError(err));
       }
@@ -626,8 +620,8 @@ function App() {
       try {
         const contents = await file.text();
         const snapshot = await ImportResults(contents);
-        setResults(snapshot.results ?? []);
-        setProgress(snapshot.progress ?? defaultProgress);
+        setResults(snapshot.results);
+        setProgress(snapshot.progress);
         updateFormFromSnapshot(snapshot);
       } catch (err) {
         setError(normaliseError(err));
