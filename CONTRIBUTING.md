@@ -32,6 +32,8 @@ On Windows, use `gradlew.bat` in place of `./gradlew` for Gradle commands.
 
 ```bash
 go test ./internal/...
+bun run --cwd frontend lint
+bun run --cwd frontend format:check
 bun run --cwd frontend build
 ```
 
@@ -43,7 +45,7 @@ Keep generated artifacts consistent with their source and review their diff.
 
 ## Style and documentation
 
-Follow the existing code conventions and repository formatter. Keep commit hooks enabled.
+Follow the existing code conventions and repository formatter. Format the frontend with Oxfmt (`bun run --cwd frontend format`). Keep commit hooks enabled.
 Add focused tests for changed logic when practical. Avoid tests that only assert source strings.
 Update documentation when commands, APIs, configuration, or expected behavior change.
 Keep examples small and reproducible. Preserve exact identifiers, commands, and error messages.
