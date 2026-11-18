@@ -1,4 +1,5 @@
-import { ChangeEvent, Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import type { ChangeEvent } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 
 import "./App.css";
 import {
@@ -182,6 +183,7 @@ const renderLatencySamples = (values?: number[]) => {
     const formatted = formatLatency(sample);
     const display = formatted === "—" ? formatted : `${formatted} ms`;
     return (
+      // oxlint-disable-next-line react/no-array-index-key -- Latency samples are plain numbers that can repeat; their order is their only identity.
       <span className="latency-chip" key={index}>
         {display}
       </span>
@@ -497,7 +499,7 @@ function App() {
 
   useEffect(() => {
     const offUpdate = EventsOn("scan:update", (data: ScanUpdate) => {
-      if (!data || !data.result) {
+      if (!data?.result) {
         return;
       }
       setProgress(data.progress ?? defaultProgress);
@@ -605,7 +607,7 @@ function App() {
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
-        link.download = `pistonscan-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+        link.download = `pistonscan-${new Date().toISOString().replaceAll(/[:.]/g, "-")}.json`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -693,17 +695,30 @@ function App() {
           />
         </div>
         <div className="control-buttons">
-          <button onClick={handleStart} disabled={isRunning || isPaused || busyAction === "start"}>
+          <button
+            type="button"
+            onClick={() => void handleStart()}
+            disabled={isRunning || isPaused || busyAction === "start"}
+          >
             Start Scan
           </button>
-          <button onClick={handlePause} disabled={!isRunning || busyAction === "pause"}>
+          <button
+            type="button"
+            onClick={() => void handlePause()}
+            disabled={!isRunning || busyAction === "pause"}
+          >
             Pause
           </button>
-          <button onClick={handleResume} disabled={!isPaused || busyAction === "resume"}>
+          <button
+            type="button"
+            onClick={() => void handleResume()}
+            disabled={!isPaused || busyAction === "resume"}
+          >
             Resume
           </button>
           <button
-            onClick={handleCancel}
+            type="button"
+            onClick={() => void handleCancel()}
             disabled={(!isRunning && !isPaused) || busyAction === "cancel"}
           >
             Cancel
@@ -737,7 +752,11 @@ function App() {
           </span>
         </div>
         <div className="summary-actions">
-          <button onClick={handleExport} disabled={!hasResults || busyAction === "export"}>
+          <button
+            type="button"
+            onClick={() => void handleExport()}
+            disabled={!hasResults || busyAction === "export"}
+          >
             Export
           </button>
           <label className={busyAction === "import" ? "import-label busy" : "import-label"}>
@@ -745,7 +764,7 @@ function App() {
             <input
               type="file"
               accept="application/json"
-              onChange={handleImport}
+              onChange={(event) => void handleImport(event)}
               disabled={busyAction === "import"}
             />
           </label>
