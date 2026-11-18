@@ -17,7 +17,8 @@ jobs:
         build:
           - name: 'pistonscan'
             platform:  'linux/amd64'
-            os: 'ubuntu-latest'
+            # wails-build-action does not support Ubuntu 26.04, which ubuntu-latest now uses.
+            os: 'ubuntu-24.04'
           - name: 'pistonscan'
             platform:  'windows/amd64'
             os: 'windows-latest'
