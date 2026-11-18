@@ -10,7 +10,7 @@ require (
 	github.com/grandcat/zeroconf v1.0.0
 	github.com/oiweiwei/go-msrpc v1.6.5
 	github.com/wailsapp/wails/v2 v2.17.0
-	howett.net/plist v1.0.2-0.20260819222228-760f9a56c6a7
+	howett.net/plist v1.0.2-0.20261103220614-57dc085d2783
 )
 
 require (
