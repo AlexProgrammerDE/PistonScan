@@ -247,11 +247,10 @@ function App() {
     [results],
   );
 
-  useEffect(() => {
-    if (minInsightScore > maxInsightScore) {
-      setMinInsightScore(maxInsightScore);
-    }
-  }, [maxInsightScore, minInsightScore]);
+  // A new result set can lower the maximum score. Clamp the filter during render, not in an effect.
+  if (minInsightScore > maxInsightScore) {
+    setMinInsightScore(maxInsightScore);
+  }
 
   const visibleResults = useMemo(() => {
     const dataset = results.filter((item) => {
@@ -482,20 +481,19 @@ function App() {
     }
   }, []);
 
-  const loadSnapshot = useCallback(async () => {
-    try {
-      const snapshot = await GetSnapshot();
-      setProgress(snapshot.progress ?? defaultProgress);
-      setResults(snapshot.results ?? []);
-      updateFormFromSnapshot(snapshot);
-    } catch (err) {
-      setError(normaliseError(err));
-    }
-  }, [updateFormFromSnapshot]);
-
   useEffect(() => {
+    const loadSnapshot = async () => {
+      try {
+        const snapshot = await GetSnapshot();
+        setProgress(snapshot.progress ?? defaultProgress);
+        setResults(snapshot.results ?? []);
+        updateFormFromSnapshot(snapshot);
+      } catch (err) {
+        setError(normaliseError(err));
+      }
+    };
     loadSnapshot().catch((err) => setError(normaliseError(err)));
-  }, [loadSnapshot]);
+  }, [updateFormFromSnapshot]);
 
   useEffect(() => {
     const offUpdate = EventsOn("scan:update", (data: ScanUpdate) => {
