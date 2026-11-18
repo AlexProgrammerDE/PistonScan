@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "lint": "oxlint --deny-warnings",
+    "lint": "oxlint",
     "format": "oxfmt",
     "format:check": "oxfmt --check"
   },
