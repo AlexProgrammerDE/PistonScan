@@ -50,6 +50,13 @@
     "typescript/strict-boolean-expressions": "off",
     // The app supports macOS 10.13, whose WKWebView has no Array#toSorted (ES2023).
     "unicorn/no-array-sort": "off",
+    "typescript/consistent-type-definitions": ["error", "interface"],
+    "typescript/array-type": "error",
+    "typescript/no-inferrable-types": "error",
+    "typescript/prefer-function-type": "error",
+    "typescript/consistent-indexed-object-style": "error",
+    "unicorn/switch-case-braces": "error",
+    "eslint/no-useless-assignment": "error",
     "typescript/restrict-plus-operands": "error",
     "typescript/prefer-promise-reject-errors": "error",
     "typescript/return-await": "error",

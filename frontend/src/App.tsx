@@ -637,16 +637,21 @@ function App() {
 
   const statusLabel = useMemo(() => {
     switch (progress.status) {
-      case "running":
+      case "running": {
         return "Running";
-      case "paused":
+      }
+      case "paused": {
         return "Paused";
-      case "cancelled":
+      }
+      case "cancelled": {
         return "Cancelled";
-      case "completed":
+      }
+      case "completed": {
         return "Completed";
-      default:
+      }
+      default: {
         return "Idle";
+      }
     }
   }, [progress.status]);
 
