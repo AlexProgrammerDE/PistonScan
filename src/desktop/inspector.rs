@@ -125,6 +125,7 @@ fn header(host: &HostResult, cx: &Context<Desktop>) -> Div {
     let icon = super::results::device_icon(host);
     let theme = cx.theme();
     let title = name(host).to_owned();
+    let copy_title = title.clone();
     let subtitle = super::results::device_subtitle(host);
     div()
         .flex()
@@ -141,7 +142,8 @@ fn header(host: &HostResult, cx: &Context<Desktop>) -> Div {
                         .text_lg()
                         .font_bold()
                         .id("inspector-name")
-                        .line_clamp(2)
+                        .line_clamp(1)
+                        .text_ellipsis()
                         .child(title.clone())
                         .tooltip(move |window, cx| {
                             gpui_component::tooltip::Tooltip::new(title.clone()).build(window, cx)
@@ -167,7 +169,19 @@ fn header(host: &HostResult, cx: &Context<Desktop>) -> Div {
                         } else {
                             theme.muted_foreground
                         }))
-                        .child(if host.reachable { "Online" } else { "Offline" }),
+                        .child(if host.reachable { "Online" } else { "Offline" })
+                        .child(
+                            Button::new("copy-device-name")
+                                .xsmall()
+                                .ghost()
+                                .icon(IconName::Copy)
+                                .tooltip("Copy device name")
+                                .on_click(move |_, _, cx| {
+                                    cx.write_to_clipboard(ClipboardItem::new_string(
+                                        copy_title.clone(),
+                                    ));
+                                }),
+                        ),
                 ),
         )
         .child(
@@ -189,7 +203,6 @@ fn network_identity(host: &HostResult, cx: &Context<Desktop>) -> Option<Div> {
         ("Manufacturer", host.manufacturer.clone()),
         ("OS", host.os_guess.clone()),
         ("TTL", known_count(host.ttl)),
-        ("Checks", known_count(host.attempts)),
     ];
     let fields = identity
         .iter()
@@ -249,6 +262,11 @@ fn known_count(value: u64) -> String {
     }
 }
 
+fn wrap_value(value: &str) -> String {
+    // Give GPUI a break opportunity after punctuation without changing clipboard text.
+    value.replace('.', ".\u{200b}").replace('-', "-\u{200b}")
+}
+
 fn field(label: &str, value: &str, copy_index: Option<usize>, cx: &Context<Desktop>) -> Div {
     let copy = value.to_owned();
     div()
@@ -268,7 +286,7 @@ fn field(label: &str, value: &str, copy_index: Option<usize>, cx: &Context<Deskt
                 .flex_1()
                 .min_w_0()
                 .overflow_hidden()
-                .child(value.to_owned()),
+                .child(wrap_value(value)),
         )
         .when_some(copy_index, |row, index| {
             row.child(
@@ -458,7 +476,17 @@ fn https_port(port: u64) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{certificate_warning, known, known_count};
+    use super::{certificate_warning, known, known_count, wrap_value};
+
+    #[test]
+    fn long_values_can_wrap_at_punctuation() {
+        assert_eq!(
+            wrap_value("design-studio.example"),
+            "design-\u{200b}studio.\u{200b}example",
+            "Offer a break after each separator"
+        );
+        assert_eq!(wrap_value("Linux"), "Linux", "Preserve plain words");
+    }
 
     #[test]
     fn unknown_values_are_hidden() {

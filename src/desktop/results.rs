@@ -290,7 +290,7 @@ impl Desktop {
                     .child(
                         Button::new("open-saved-scan")
                             .small()
-                            .ghost()
+                            .link()
                             .label("Open a saved scan")
                             .on_click(cx.listener(|view, _, window, cx| view.import(window, cx))),
                     )
