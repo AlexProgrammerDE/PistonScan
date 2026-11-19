@@ -121,7 +121,7 @@ const normaliseError = (error: unknown): string => {
     return error;
   }
   if (error && typeof error === "object" && "message" in error) {
-    const message = (error as { message?: unknown }).message;
+    const message = error.message;
     if (typeof message === "string") {
       return message;
     }
@@ -422,7 +422,7 @@ function App() {
         if (service.port === 6379 || name.includes("redis")) {
           addObservation({ label: "Redis data store", tone: "info" });
         }
-        if (service.port === 27017 || name.includes("mongo")) {
+        if (service.port === 27_017 || name.includes("mongo")) {
           addObservation({ label: "MongoDB database", tone: "info" });
         }
         if (service.port === 9200 || name.includes("elastic")) {
