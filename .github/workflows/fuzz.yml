@@ -61,6 +61,8 @@ jobs:
           - tls_cert
     env:
       TARGET: ${{ matrix.target }}
+      # The prebuilt cargo-fuzz is a musl binary and would default to the musl target.
+      TRIPLE: x86_64-unknown-linux-gnu
       LONG_RUN: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     defaults:
       run:
@@ -82,7 +84,7 @@ jobs:
           key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
           restore-keys: fuzz-corpus-${{ matrix.target }}-
       - name: Build fuzz target
-        run: cargo +nightly-2026-11-01 fuzz build "$TARGET"
+        run: cargo +nightly-2026-11-01 fuzz build --target "$TRIPLE" "$TARGET"
       - name: Run fuzz target
         run: |
           seconds=60
@@ -90,7 +92,7 @@ jobs:
             seconds=600
           fi
           mkdir -p "corpus/$TARGET"
-          cargo +nightly-2026-11-01 fuzz run "$TARGET" "corpus/$TARGET" "seeds/$TARGET" -- \
+          cargo +nightly-2026-11-01 fuzz run --target "$TRIPLE" "$TARGET" "corpus/$TARGET" "seeds/$TARGET" -- \
             -max_total_time="$seconds" -rss_limit_mb=2048 -timeout=10
       - name: Save corpus
         if: always() && env.LONG_RUN == 'true'
