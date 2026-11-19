@@ -49,7 +49,7 @@ cargo run --locked
 cargo build --locked --release
 ```
 
-The release executable is in `target/release`. The macOS CI job also assembles a universal `pistonscan.app` with Intel and Apple silicon binaries.
+The release executable is in `target/release`. The macOS CI job also assembles a universal `PistonScan.app` with Intel and Apple silicon binaries.
 
 ## Contributing and support
 

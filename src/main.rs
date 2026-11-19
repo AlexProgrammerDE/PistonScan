@@ -344,6 +344,11 @@ impl Render for Desktop {
 }
 
 fn main() {
+    if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--version")) {
+        println!(concat!("PistonScan ", env!("CARGO_PKG_VERSION")));
+        return;
+    }
+
     let runtime = match Runtime::new() {
         Ok(runtime) => runtime,
         Err(error) => {
@@ -399,7 +404,7 @@ fn main() {
                 ))),
                 window_min_size: Some(size(px(820.), px(460.))),
                 titlebar: Some(TitlebarOptions {
-                    title: Some("PistonScan".into()),
+                    title: Some(concat!("PistonScan ", env!("CARGO_PKG_VERSION")).into()),
                     ..TitlebarOptions::default()
                 }),
                 ..WindowOptions::default()
