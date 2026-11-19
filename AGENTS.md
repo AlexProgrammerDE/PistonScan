@@ -12,7 +12,9 @@ PistonScan uses Rust and GPUI. Keep scan logic in the library so tests can run w
 - Keep the shell and scan events in `src/main.rs`. Keep the toolbar, device list, inspector, settings, and theme in separate desktop modules.
 - Put target validation and device filters in `src/desktop/state.rs`. Keep preferences separate from scan snapshots.
 - Keep list rows the same height so GPUI can draw only the rows in view. Preserve the selected IP and the top visible host as results arrive.
-- Use `tests/fixtures/studio-network.json` to review populated layouts. In a debug build, set `PISTONSCAN_PREVIEW` to `inspector`, `scanning`, or `settings` to open that state. Review light and dark mode when changing the layout.
+- Open `tests/fixtures/studio-network.json` to review the device list. In a debug build, set `PISTONSCAN_PREVIEW` to `inspector` or `long-content` to select a fixture device.
+- Set `PISTONSCAN_PREVIEW` to `empty`, `scanning`, `paused`, `stopping`, `cancelled`, `no-results`, `error`, or `settings` to review that state. With the fixture open, set `PISTONSCAN_PREVIEW` to `focus` to focus search.
+- Set `PISTONSCAN_PREVIEW_MINIMUM=1` to start at the minimum size. Review light and dark mode when changing the layout.
 
 ## Build and verify
 

@@ -38,10 +38,13 @@
           "port": 22,
           "protocol": "tcp"
         }
+      ],
+      "latencySamples": [
+        0.8
       ]
     },
     {
-      "ip": "192.0.2.2",
+      "ip": "192.0.2.9",
       "reachable": true,
       "deviceName": "Workstation",
       "manufacturer": "Framework",
@@ -62,10 +65,14 @@
           "port": 22,
           "protocol": "tcp"
         }
-      ]
+      ],
+      "latencySamples": [
+        2.3
+      ],
+      "ttl": 64
     },
     {
-      "ip": "192.0.2.3",
+      "ip": "192.0.2.10",
       "reachable": true,
       "deviceName": "Maya\u2019s MacBook",
       "manufacturer": "Apple",
@@ -86,6 +93,9 @@
           "port": 445,
           "protocol": "tcp"
         }
+      ],
+      "latencySamples": [
+        3.7
       ]
     },
     {
@@ -110,6 +120,9 @@
           "port": 631,
           "protocol": "tcp"
         }
+      ],
+      "latencySamples": [
+        5.4
       ]
     },
     {
@@ -134,6 +147,9 @@
           "port": 8008,
           "protocol": "tcp"
         }
+      ],
+      "latencySamples": [
+        11.6
       ]
     },
     {
@@ -163,6 +179,9 @@
           "port": 5001,
           "protocol": "tcp"
         }
+      ],
+      "latencySamples": [
+        1.5
       ]
     },
     {
@@ -181,7 +200,10 @@
         "ICMP",
         "DNS"
       ],
-      "services": []
+      "services": [],
+      "latencySamples": [
+        18.1
+      ]
     },
     {
       "ip": "192.0.2.8",
@@ -199,7 +221,71 @@
         "ICMP",
         "DNS"
       ],
-      "services": []
+      "services": [],
+      "latencySamples": [
+        9.2
+      ]
+    },
+    {
+      "ip": "192.0.2.2",
+      "reachable": true,
+      "deviceName": "Architectural visualization and rendering workstation in the north editing suite",
+      "manufacturer": "Framework",
+      "osGuess": "Linux",
+      "latencyMs": 1.2,
+      "latencySamples": [
+        1.2
+      ],
+      "hostnames": [
+        "architectural-visualization-workstation.north-editing-suite.studio.test"
+      ],
+      "services": [
+        {
+          "service": "Remote administration dashboard",
+          "port": 8443,
+          "protocol": "tcp"
+        },
+        {
+          "service": "HTTPS",
+          "port": 443,
+          "protocol": "tcp"
+        },
+        {
+          "service": "HTTP",
+          "port": 80,
+          "protocol": "tcp"
+        },
+        {
+          "service": "SSH",
+          "port": 22,
+          "protocol": "tcp"
+        },
+        {
+          "service": "SMB",
+          "port": 445,
+          "protocol": "tcp"
+        },
+        {
+          "service": "IPP",
+          "port": 631,
+          "protocol": "tcp"
+        },
+        {
+          "service": "VNC",
+          "port": 5900,
+          "protocol": "tcp"
+        }
+      ]
+    },
+    {
+      "ip": "192.0.2.3",
+      "reachable": true,
+      "latencyMs": 4.2,
+      "latencySamples": [
+        4.2
+      ],
+      "manufacturer": "Unknown",
+      "osGuess": "Unknown"
     }
   ]
 }

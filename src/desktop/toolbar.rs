@@ -10,6 +10,10 @@ use super::state::target_count;
 use crate::{Desktop, ToolbarPanel};
 
 impl Desktop {
+    pub(crate) fn show_start_in_results(&self) -> bool {
+        self.snapshot.progress.status == ScanStatus::Idle && self.snapshot.results.is_empty()
+    }
+
     pub(crate) fn toolbar(&self, cx: &Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
         let target = self.target.read(cx).value();
@@ -35,10 +39,12 @@ impl Desktop {
                             .min_w_0()
                             .child(Input::new(&self.target).disabled(busy)),
                     )
-                    .child(
+                    .when(!self.show_start_in_results(), |row| row.child(
                         Button::new("scan")
                             .primary()
-                            .label(if busy {
+                            .label(if self.stopping {
+                                "Stopping…".to_owned()
+                            } else if busy {
                                 "Stop".to_owned()
                             } else if self.confirm.as_deref() == Some(target.as_ref()) {
                                 "Confirm scan".to_owned()
@@ -52,10 +58,10 @@ impl Desktop {
                             } else {
                                 "Start or stop scan (Ctrl+R)"
                             })
-                            .disabled(!busy && validation.is_err())
+                            .disabled(self.stopping || (!busy && validation.is_err()))
                             .on_click(cx.listener(|view, _, _, cx| view.toggle_scan(cx))),
-                    )
-                    .when(busy, |row| {
+                    ))
+                    .when(busy && !self.stopping, |row| {
                         row.child(
                             Button::new("pause")
                                 .outline()
@@ -91,7 +97,7 @@ impl Desktop {
                     ),
             )
             .when(self.panel == Some(ToolbarPanel::Files), |bar| bar.child(self.file_menu(cx)))
-            .when_some(self.interface.clone(), |bar, label| bar.child(div().mt_2().text_xs().text_color(theme.muted_foreground).child(label)))
+            .when_some(self.interface.clone().filter(|_| !self.show_start_in_results()), |bar, label| bar.child(div().mt_2().text_xs().text_color(theme.muted_foreground).child(label)))
             .when(!busy, |bar| {
                 bar.when_some(validation.err(), |bar, error| {
                     bar.child(div().mt_2().text_sm().text_color(theme.danger).child(if target.is_empty() && self.interface.is_none() { "No active IPv4 interface found. Connect to a network or enter an address." } else { error }))
@@ -139,13 +145,12 @@ impl Desktop {
 
     pub(crate) fn progress(&self, cx: &Context<Self>) -> impl IntoElement {
         let progress = &self.snapshot.progress;
-        let status = match progress.status {
-            ScanStatus::Idle => "Ready",
-            ScanStatus::Running => "Scanning",
-            ScanStatus::Paused => "Paused",
-            ScanStatus::Cancelled => "Stopped",
-            ScanStatus::Completed => "Complete",
-        };
+        let status = status_message(
+            progress.status,
+            self.stopping,
+            !self.error.is_empty(),
+            target_count(&self.target.read(cx).value()).is_ok(),
+        );
         let elapsed = self.elapsed.as_secs();
         let percent = progress
             .completed
@@ -193,5 +198,51 @@ impl Desktop {
                         .h(px(3.)),
                 )
             })
+    }
+}
+
+fn status_message(status: ScanStatus, stopping: bool, error: bool, valid: bool) -> &'static str {
+    if stopping {
+        return "Stopping…";
+    }
+    match status {
+        ScanStatus::Running => "Scanning",
+        ScanStatus::Paused => "Paused",
+        _ if error => "Check the error above",
+        _ if !valid => "Fix the subnet to scan",
+        ScanStatus::Idle => "Ready to scan",
+        ScanStatus::Cancelled => "Scan cancelled",
+        ScanStatus::Completed => "Scan complete",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ScanStatus, status_message};
+
+    #[test]
+    fn status_follows_scan_and_target() {
+        for (status, stopping, error, valid, expected) in [
+            (ScanStatus::Idle, false, false, true, "Ready to scan"),
+            (
+                ScanStatus::Idle,
+                false,
+                false,
+                false,
+                "Fix the subnet to scan",
+            ),
+            (ScanStatus::Idle, false, true, true, "Check the error above"),
+            (ScanStatus::Running, false, false, true, "Scanning"),
+            (ScanStatus::Paused, false, false, true, "Paused"),
+            (ScanStatus::Paused, true, false, true, "Stopping…"),
+            (ScanStatus::Completed, false, false, true, "Scan complete"),
+            (ScanStatus::Cancelled, false, false, true, "Scan cancelled"),
+        ] {
+            assert_eq!(
+                status_message(status, stopping, error, valid),
+                expected,
+                "Unexpected message for {status:?}"
+            );
+        }
     }
 }

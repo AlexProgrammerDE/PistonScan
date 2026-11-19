@@ -74,6 +74,7 @@ struct Desktop {
     snapshot: Snapshot,
     control: Option<watch::Sender<ScanStatus>>,
     scan_id: u64,
+    stopping: bool,
     error: String,
     selected: Option<String>,
     inspector: bool,
@@ -129,7 +130,11 @@ impl Desktop {
 
     fn toggle_scan(&mut self, cx: &mut Context<Self>) {
         if self.busy() {
-            self.set_status(ScanStatus::Cancelled);
+            if !self.stopping {
+                self.stopping = true;
+                self.set_status(ScanStatus::Cancelled);
+                cx.notify();
+            }
             return;
         }
         self.start(cx);
@@ -253,6 +258,10 @@ impl Desktop {
                             }));
                         }).detach();
                     }
+                    if !view.busy() {
+                        view.stopping = false;
+                        view.control = None;
+                    }
                     cx.notify();
                     view.busy()
                 });
@@ -272,14 +281,16 @@ impl Desktop {
 }
 
 impl Render for Desktop {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
         div()
             .id("pistonscan")
             .key_context("PistonScan")
             .track_focus(&self.focus)
             .on_action(cx.listener(|view, _: &FindDevices, window, cx| {
-                view.search.update(cx, |input, cx| input.focus(window, cx));
+                if !view.snapshot.results.is_empty() {
+                    view.search.update(cx, |input, cx| input.focus(window, cx));
+                }
             }))
             .on_action(cx.listener(|view, _: &ToggleScan, _, cx| view.toggle_scan(cx)))
             .on_action(cx.listener(|view, _: &ImportScan, window, cx| view.import(window, cx)))
@@ -297,9 +308,12 @@ impl Render for Desktop {
                 cx.notify();
             }))
             .on_action(cx.listener(|view, _: &Dismiss, window, cx| {
-                if view.search.read(cx).value().is_empty() {
+                if view.panel.take().is_some() {
+                    window.focus(&view.focus);
+                } else if view.inspector {
                     view.inspector = false;
-                    view.panel = None;
+                    window.focus(&view.focus);
+                } else if view.search.read(cx).value().is_empty() {
                     window.focus(&view.focus);
                 } else {
                     view.search
@@ -314,9 +328,6 @@ impl Render for Desktop {
             .bg(theme.background)
             .text_color(theme.foreground)
             .child(self.toolbar(cx))
-            .when(self.panel == Some(ToolbarPanel::Settings), |app| {
-                app.child(self.settings(cx))
-            })
             .when(!self.error.is_empty(), |app| {
                 app.child(
                     div()
@@ -328,7 +339,7 @@ impl Render for Desktop {
                 )
             })
             .child(self.progress(cx))
-            .child(self.results(cx))
+            .child(self.results(window.viewport_size().width, cx))
     }
 }
 
@@ -374,6 +385,12 @@ fn main() {
             let (width, height) = prefs.window_size.map_or((1110., 740.), |(w, h)| {
                 (w.clamp(820., 3840.), h.clamp(460., 2160.))
             });
+            #[cfg(debug_assertions)]
+            let (width, height) = if std::env::var_os("PISTONSCAN_PREVIEW_MINIMUM").is_some() {
+                (820., 460.)
+            } else {
+                (width, height)
+            };
             let options = WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
                     None,
@@ -475,6 +492,7 @@ fn create_desktop(
             snapshot: Snapshot::default(),
             control: None,
             scan_id: 0,
+            stopping: false,
             error: String::new(),
             selected: None,
             inspector: false,
@@ -529,15 +547,37 @@ fn open_startup_snapshot(desktop: &Entity<Desktop>, window: &mut Window, cx: &mu
                 .update(cx, |input, cx| input.set_value(target, window, cx));
         }
         match preview.as_deref() {
+            Ok("focus") => view.search.update(cx, |input, cx| input.focus(window, cx)),
             Ok("settings") => view.panel = Some(ToolbarPanel::Settings),
-            Ok("inspector") => {
-                view.selected = view.snapshot.results.first().map(|host| host.ip.clone());
+            Ok("inspector" | "long-content") => {
+                let ip = if preview.as_deref() == Ok("long-content") {
+                    "192.0.2.2"
+                } else {
+                    "192.0.2.1"
+                };
+                view.selected = view
+                    .snapshot
+                    .results
+                    .iter()
+                    .find(|host| host.ip == ip)
+                    .or_else(|| view.snapshot.results.first())
+                    .map(|host| host.ip.clone());
                 view.inspector = true;
             }
-            Ok("scanning") => {
-                view.snapshot.progress.status = ScanStatus::Running;
+            Ok("scanning" | "paused" | "stopping" | "cancelled" | "no-results") => {
+                view.snapshot.progress.status = match preview.as_deref() {
+                    Ok("paused") => ScanStatus::Paused,
+                    Ok("cancelled") => ScanStatus::Cancelled,
+                    Ok("no-results") => ScanStatus::Completed,
+                    _ => ScanStatus::Running,
+                };
+                view.stopping = preview.as_deref() == Ok("stopping");
                 view.snapshot.progress.total = 256;
-                view.snapshot.progress.completed = 73;
+                view.snapshot.progress.completed = if preview.as_deref() == Ok("no-results") {
+                    256
+                } else {
+                    73
+                };
                 view.started = Some(Instant::now());
                 view.elapsed = Duration::from_secs(7);
             }

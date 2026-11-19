@@ -4,7 +4,12 @@ use std::{
 };
 
 use gpui::{Context, IntoElement, div, prelude::*};
-use gpui_component::{ActiveTheme, StyledExt, checkbox::Checkbox, input::Input};
+use gpui_component::{
+    ActiveTheme, IconName, Sizable, StyledExt,
+    button::{Button, ButtonVariants},
+    checkbox::Checkbox,
+    input::Input,
+};
 use serde::{Deserialize, Serialize};
 
 use super::state::{Filter, Sort};
@@ -126,67 +131,109 @@ impl Desktop {
             .px_5()
             .py_4()
             .bg(theme.muted)
-            .border_b_1()
-            .border_color(theme.border)
-            .child(div().font_bold().mb_3().child("Scan settings"))
             .child(
                 div()
                     .flex()
-                    .gap_5()
+                    .items_center()
+                    .justify_between()
+                    .mb_3()
+                    .child(div().font_bold().child("Scan settings"))
                     .child(
-                        div()
-                            .flex_1()
-                            .child("Concurrent checks")
-                            .child(Input::new(&self.threads))
-                            .child(
-                                div()
-                                    .mt_1()
-                                    .text_sm()
-                                    .text_color(theme.muted_foreground)
-                                    .child("Lower this if scanning slows down your network."),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .flex_1()
-                            .child("Delay between checks (ms)")
-                            .child(Input::new(&self.delay))
-                            .child(
-                                div()
-                                    .mt_1()
-                                    .text_sm()
-                                    .text_color(theme.muted_foreground)
-                                    .child("Increase this to send probes less often."),
-                            ),
+                        Button::new("close-settings")
+                            .small()
+                            .ghost()
+                            .icon(IconName::Close)
+                            .tooltip("Close settings (Esc)")
+                            .on_click(cx.listener(|view, _, window, cx| {
+                                view.panel = None;
+                                window.focus(&view.focus);
+                                cx.notify();
+                            })),
                     ),
             )
             .child(
                 div()
                     .flex()
+                    .flex_col()
                     .gap_4()
-                    .mt_3()
+                    .child(number_setting(
+                        "Concurrent checks",
+                        &self.threads,
+                        "Lower this if scanning slows down your network.",
+                        cx,
+                    ))
+                    .child(number_setting(
+                        "Delay between checks (ms)",
+                        &self.delay,
+                        "Increase this to send probes less often.",
+                        cx,
+                    )),
+            )
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_4()
+                    .mt_4()
                     .child(
-                        Checkbox::new("probe-names")
-                            .label("Look up device names")
-                            .checked(self.probes.names)
-                            .on_click(cx.listener(|view, value, _, cx| {
-                                view.probes.names = *value;
-                                view.save(cx);
-                                cx.notify();
-                            })),
+                        div()
+                            .flex_1()
+                            .child(
+                                Checkbox::new("probe-names")
+                                    .label("Look up device names")
+                                    .checked(self.probes.names)
+                                    .on_click(cx.listener(|view, value, _, cx| {
+                                        view.probes.names = *value;
+                                        view.save(cx);
+                                        cx.notify();
+                                    })),
+                            )
+                            .child(
+                                div()
+                                    .mt_1()
+                                    .text_sm()
+                                    .text_color(theme.muted_foreground)
+                                    .child("Find names through DNS and local discovery."),
+                            ),
                     )
                     .child(
-                        Checkbox::new("probe-services")
-                            .label("Check for open services")
-                            .checked(self.probes.services)
-                            .on_click(cx.listener(|view, value, _, cx| {
-                                view.probes.services = *value;
-                                view.save(cx);
-                                cx.notify();
-                            })),
+                        div()
+                            .flex_1()
+                            .child(
+                                Checkbox::new("probe-services")
+                                    .label("Check for open services")
+                                    .checked(self.probes.services)
+                                    .on_click(cx.listener(|view, value, _, cx| {
+                                        view.probes.services = *value;
+                                        view.save(cx);
+                                        cx.notify();
+                                    })),
+                            )
+                            .child(
+                                div()
+                                    .mt_1()
+                                    .text_sm()
+                                    .text_color(theme.muted_foreground)
+                                    .child("Find open ports and identify their services."),
+                            ),
                     ),
             )
     }
+}
+
+fn number_setting(
+    label: &'static str,
+    input: &gpui::Entity<gpui_component::input::InputState>,
+    hint: &'static str,
+    cx: &Context<Desktop>,
+) -> gpui::Div {
+    div().child(label).child(Input::new(input)).child(
+        div()
+            .mt_1()
+            .text_sm()
+            .text_color(cx.theme().muted_foreground)
+            .child(hint),
+    )
 }
 
 #[cfg(test)]

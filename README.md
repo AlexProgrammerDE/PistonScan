@@ -8,7 +8,7 @@ Select **Scan** to start. Devices appear as checks finish. Search by name, IP ad
 
 PistonScan follows the system appearance. [See the dark interface](docs/screenshots/inspector-dark.png).
 
-Open the three-dot menu to import or export a JSON snapshot. You can also pass a snapshot path to the executable. Use **Scan settings** to adjust concurrency, set the delay, or choose which checks to run.
+Open the three-dot menu to import or export a JSON snapshot. You can also pass a snapshot path to the executable. Open **Scan settings** to adjust the number of simultaneous checks, set a delay, or choose which checks to run. The device list stays visible while you edit these settings.
 
 | Action | Windows and Linux | macOS |
 | --- | --- | --- |

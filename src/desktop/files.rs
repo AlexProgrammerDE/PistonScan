@@ -56,6 +56,7 @@ impl Desktop {
     ) {
         self.set_status(ScanStatus::Cancelled);
         self.control = None;
+        self.stopping = false;
         self.scan_id = self.scan_id.wrapping_add(1);
         let count = snapshot.results.len() as u64;
         if snapshot.progress.total == 0 {
