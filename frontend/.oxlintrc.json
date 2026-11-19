@@ -151,7 +151,10 @@
     ],
     "typescript/prefer-ts-expect-error": "error",
     "import/no-duplicates": "error",
-    "import/no-cycle": "error",
+    "import/no-cycle": ["error", { "ignoreTypes": true }],
+    "typescript/consistent-return": "error",
+    // Consistent-return requires explicit return undefined when other branches return a value.
+    "unicorn/no-useless-undefined": "off",
     "promise/catch-or-return": "error",
     "unicorn/prefer-at": "error",
     "unicorn/prefer-string-replace-all": "error",
