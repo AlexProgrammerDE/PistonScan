@@ -4,7 +4,8 @@
   "categories": {
     "correctness": "error",
     "suspicious": "error",
-    "perf": "error"
+    "perf": "error",
+    "pedantic": "error"
   },
   "options": {
     "typeAware": true,
@@ -31,6 +32,22 @@
       }
     ],
     "react/react-in-jsx-scope": "off",
+    // Pedantic rules turned off: size metrics, opinion, or duplicates of configured rules.
+    "typescript/prefer-readonly-parameter-types": "off",
+    "eslint/max-lines": "off",
+    "eslint/max-lines-per-function": "off",
+    "eslint/max-depth": "off",
+    "eslint/max-nested-callbacks": "off",
+    "eslint/max-classes-per-file": "off",
+    "import/max-dependencies": "off",
+    "eslint/no-inline-comments": "off",
+    "eslint/no-warning-comments": "off",
+    "eslint/no-negated-condition": "off",
+    "unicorn/no-negated-condition": "off",
+    // Duplicates typescript/require-await.
+    "eslint/require-await": "off",
+    // Conflicts with the prefer-nullish-coalescing setup.
+    "typescript/strict-boolean-expressions": "off",
     // The app supports macOS 10.13, whose WKWebView has no Array#toSorted (ES2023).
     "unicorn/no-array-sort": "off",
     "typescript/restrict-plus-operands": "error",

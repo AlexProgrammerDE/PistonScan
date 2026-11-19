@@ -93,6 +93,16 @@ type SortKey = "insights" | "latency" | "ip";
 const isSortKey = (value: string): value is SortKey =>
   value === "insights" || value === "latency" || value === "ip";
 
+const resultComparators: Record<SortKey, (a: ScanResult, b: ScanResult) => number> = {
+  insights: (a, b) => (b.insightScore ?? 0) - (a.insightScore ?? 0),
+  latency: (a, b) => {
+    const latencyA = a.reachable ? a.latencyMs : Number.POSITIVE_INFINITY;
+    const latencyB = b.reachable ? b.latencyMs : Number.POSITIVE_INFINITY;
+    return latencyA - latencyB;
+  },
+  ip: (a, b) => a.ip.localeCompare(b.ip, undefined, { numeric: true }),
+};
+
 type ObservationTone = "info" | "warn" | "error" | "muted" | "success";
 
 interface Observation {
@@ -122,6 +132,10 @@ const normaliseError = (error: unknown): string => {
     return "An unexpected error occurred.";
   }
 };
+
+// Blank input stays invalid instead of coercing to 0.
+const parseInteger = (value: string) =>
+  value.trim() === "" ? Number.NaN : Math.trunc(Number(value));
 
 const formatLatency = (value: number) => {
   if (!Number.isFinite(value) || value <= 0) {
@@ -263,20 +277,8 @@ function App() {
       return (item.insightScore ?? 0) >= minInsightScore;
     });
 
-    return dataset.sort((a, b) => {
-      switch (sortKey) {
-        case "latency": {
-          const latencyA = a.reachable ? a.latencyMs : Number.POSITIVE_INFINITY;
-          const latencyB = b.reachable ? b.latencyMs : Number.POSITIVE_INFINITY;
-          return latencyA - latencyB;
-        }
-        case "ip":
-          return a.ip.localeCompare(b.ip, undefined, { numeric: true });
-        case "insights":
-        default:
-          return (b.insightScore ?? 0) - (a.insightScore ?? 0);
-      }
-    });
+    const compare = resultComparators[sortKey];
+    return dataset.sort((a, b) => compare(a, b));
   }, [results, showReachableOnly, showSuccessfulOnly, minInsightScore, sortKey]);
 
   const totalReachable = useMemo(() => results.filter((item) => item.reachable).length, [results]);
@@ -332,15 +334,13 @@ function App() {
 
     if (!item.reachable) {
       addObservation({ label: "No response detected", tone: "muted" });
-    } else {
-      if (item.latencyMs > 0 && item.latencyMs <= 5) {
-        addObservation({ label: "Very low latency", tone: "success" });
-      } else if (item.latencyMs > 120) {
-        addObservation({
-          label: `High latency (${formatLatency(item.latencyMs)} ms)`,
-          tone: "warn",
-        });
-      }
+    } else if (item.latencyMs > 0 && item.latencyMs <= 5) {
+      addObservation({ label: "Very low latency", tone: "success" });
+    } else if (item.latencyMs > 120) {
+      addObservation({
+        label: `High latency (${formatLatency(item.latencyMs)} ms)`,
+        tone: "warn",
+      });
     }
 
     const hostnameLabel = item.hostnames?.[0] ?? item.mdnsNames?.[0];
@@ -492,7 +492,9 @@ function App() {
         setError(normaliseError(err));
       }
     };
-    loadSnapshot().catch((err) => setError(normaliseError(err)));
+    loadSnapshot().catch((err: unknown) => {
+      setError(normaliseError(err));
+    });
   }, [updateFormFromSnapshot]);
 
   useEffect(() => {
@@ -531,8 +533,8 @@ function App() {
   const handleStart = async () => {
     setError(null);
     const subnet = form.subnet.trim();
-    const threadLimit = Number.parseInt(form.threadLimit, 10);
-    const delayMs = Number.parseInt(form.delayMs, 10);
+    const threadLimit = parseInteger(form.threadLimit);
+    const delayMs = parseInteger(form.delayMs);
     if (!subnet) {
       setError("Please provide a subnet or IP address to scan.");
       return;
@@ -599,10 +601,10 @@ function App() {
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
-        link.download = `pistonscan-${new Date().toISOString().replaceAll(/[:.]/g, "-")}.json`;
-        document.body.appendChild(link);
+        link.download = `pistonscan-${new Date().toISOString().replaceAll(/[:.]/gu, "-")}.json`;
+        document.body.append(link);
         link.click();
-        document.body.removeChild(link);
+        link.remove();
         URL.revokeObjectURL(url);
       } catch (err) {
         setError(normaliseError(err));
@@ -773,7 +775,9 @@ function App() {
               <input
                 type="checkbox"
                 checked={showReachableOnly}
-                onChange={(event) => setShowReachableOnly(event.target.checked)}
+                onChange={(event) => {
+                  setShowReachableOnly(event.target.checked);
+                }}
               />
               Reachable only
             </label>
@@ -781,7 +785,9 @@ function App() {
               <input
                 type="checkbox"
                 checked={showSuccessfulOnly}
-                onChange={(event) => setShowSuccessfulOnly(event.target.checked)}
+                onChange={(event) => {
+                  setShowSuccessfulOnly(event.target.checked);
+                }}
               />
               Successful only
             </label>
@@ -793,8 +799,10 @@ function App() {
                 min={0}
                 max={Math.max(maxInsightScore, 1)}
                 value={Math.min(minInsightScore, Math.max(maxInsightScore, 1))}
-                onChange={(event) => setMinInsightScore(Number.parseInt(event.target.value, 10))}
-                disabled={!results.length}
+                onChange={(event) => {
+                  setMinInsightScore(Math.trunc(Number(event.target.value)));
+                }}
+                disabled={results.length === 0}
               />
               <div className="insight-presets">
                 {insightPresets.map((preset) => (
@@ -802,8 +810,10 @@ function App() {
                     key={preset.label}
                     type="button"
                     className={preset.value === minInsightScore ? "preset active" : "preset"}
-                    onClick={() => setMinInsightScore(preset.value)}
-                    disabled={!results.length}
+                    onClick={() => {
+                      setMinInsightScore(preset.value);
+                    }}
+                    disabled={results.length === 0}
                   >
                     {preset.label}
                   </button>
@@ -875,7 +885,9 @@ function App() {
                           <button
                             type="button"
                             className="expand-toggle"
-                            onClick={() => toggleExpanded(item.ip)}
+                            onClick={() => {
+                              toggleExpanded(item.ip);
+                            }}
                             aria-expanded={expanded}
                             aria-controls={`${item.ip}-details`}
                           >
