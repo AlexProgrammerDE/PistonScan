@@ -72,5 +72,5 @@ jobs:
           iconutil -c icns build/bin/AppIcon.iconset -o build/bin/pistonscan.app/Contents/Resources/AppIcon.icns
           cp build/darwin/Info.plist build/bin/pistonscan.app/Contents/Info.plist
           lipo -create target/x86_64-apple-darwin/release/pistonscan target/aarch64-apple-darwin/release/pistonscan -output build/bin/pistonscan.app/Contents/MacOS/pistonscan
-          lipo -verify_arch x86_64 arm64 build/bin/pistonscan.app/Contents/MacOS/pistonscan
+          lipo build/bin/pistonscan.app/Contents/MacOS/pistonscan -verify_arch x86_64 arm64
           codesign --force --sign - build/bin/pistonscan.app
