@@ -1,6 +1,23 @@
 # PistonScan
 
-PistonScan is a native desktop IP scanner built with Rust and GPUI. Scan one IPv4 address or a subnet and watch results arrive as each host finishes. Filter by reachability or insight score, sort by latency or IP address, and expand a row to see how PistonScan identified the device. Import and export JSON snapshots to save or revisit a scan.
+PistonScan is a desktop IP scanner for finding devices on your network. It suggests the subnet for your active IPv4 interface. You can also enter one address or another subnet.
+
+![Device list and inspector in light mode](docs/screenshots/inspector-light.png)
+
+Select **Scan** to start. Devices appear as checks finish. Search by name, IP address, MAC address, vendor, or service. Select a device to inspect its addresses and open services.
+
+PistonScan follows the system appearance. [See the dark interface](docs/screenshots/inspector-dark.png).
+
+Open the three-dot menu to import or export a JSON snapshot. You can also pass a snapshot path to the executable. Use **Scan settings** to adjust concurrency, set the delay, or choose which checks to run.
+
+| Action | Windows and Linux | macOS |
+| --- | --- | --- |
+| Find a device | Ctrl+F | Cmd+F |
+| Start or stop a scan | Ctrl+R or Ctrl+Enter | Cmd+R or Cmd+Enter |
+| Export the scan | Ctrl+E | Cmd+E |
+| Move through devices | Up or Down | Up or Down |
+| Open device details | Enter or Space | Enter or Space |
+| Clear search or close a panel | Esc | Esc |
 
 PistonScan starts with ICMP echo. For hosts that respond, it checks DNS, mDNS, NetBIOS, LLMNR, SMB, the neighbor cache, and common TCP and UDP services. It can also read TLS certificates and AirPlay metadata. See [the protocol reference](PROTOCOLS.md) for details.
 

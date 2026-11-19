@@ -4661,6 +4661,7 @@ dependencies = [
  "gpui-component",
  "gpui-component-assets",
  "hickory-proto",
+ "if-addrs",
  "mdns-sd",
  "native-tls",
  "plist",

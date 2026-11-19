@@ -48,7 +48,7 @@ impl Desktop {
         .detach();
     }
 
-    fn apply_import(
+    pub(crate) fn apply_import(
         &mut self,
         mut snapshot: Snapshot,
         window: &mut Window,
@@ -57,7 +57,6 @@ impl Desktop {
         self.set_status(ScanStatus::Cancelled);
         self.control = None;
         self.scan_id = self.scan_id.wrapping_add(1);
-        self.minimum = 0;
         let count = snapshot.results.len() as u64;
         if snapshot.progress.total == 0 {
             snapshot.progress.total = count;
@@ -77,7 +76,16 @@ impl Desktop {
             input.set_value(snapshot.config.delay_ms.to_string(), window, cx);
         });
         self.snapshot = snapshot;
-        self.expanded.clear();
+        self.online = self
+            .snapshot
+            .results
+            .iter()
+            .filter(|host| host.reachable)
+            .count();
+        self.started = None;
+        self.selected = None;
+        self.latest = None;
+        self.update_visible(cx);
         self.error.clear();
     }
 

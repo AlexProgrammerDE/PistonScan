@@ -5,7 +5,27 @@ use tokio::{process::Command, time::timeout};
 
 use crate::snapshot::HostResult;
 
+#[derive(Clone, Copy, Debug, serde::Deserialize, serde::Serialize)]
+#[serde(default)]
+pub struct ProbeGroups {
+    pub names: bool,
+    pub services: bool,
+}
+
+impl Default for ProbeGroups {
+    fn default() -> Self {
+        Self {
+            names: true,
+            services: true,
+        }
+    }
+}
+
 pub async fn collect(ip: Ipv4Addr) -> HostResult {
+    collect_with(ip, ProbeGroups::default()).await
+}
+
+pub async fn collect_with(ip: Ipv4Addr, groups: ProbeGroups) -> HostResult {
     let target = ip.to_string();
     let mut result = HostResult {
         ip: target.clone(),
@@ -22,6 +42,10 @@ pub async fn collect(ip: Ipv4Addr) -> HostResult {
     command.arg(target).kill_on_drop(true);
     match timeout(Duration::from_secs(6), command.output()).await {
         Ok(Ok(output)) => {
+            let stderr = String::from_utf8_lossy(&output.stderr).to_ascii_lowercase();
+            if stderr.contains("operation not permitted") || stderr.contains("permission denied") {
+                result.error = "ping permission denied".into();
+            }
             for line in String::from_utf8_lossy(&output.stdout).lines() {
                 if let Some((latency, ttl)) = parse_reply(line) {
                     result.latency_samples.push(latency);
@@ -44,10 +68,26 @@ pub async fn collect(ip: Ipv4Addr) -> HostResult {
     }
     if result.reachable {
         let (services, (), mac, smb) = tokio::join!(
-            crate::services::scan(ip),
-            crate::names::discover(&mut result, ip),
+            async {
+                if groups.services {
+                    crate::services::scan(ip).await
+                } else {
+                    Vec::new()
+                }
+            },
+            async {
+                if groups.names {
+                    crate::names::discover(&mut result, ip).await;
+                }
+            },
             crate::mac::lookup(ip),
-            crate::smb::discover(ip)
+            async {
+                if groups.names {
+                    crate::smb::discover(ip).await
+                } else {
+                    None
+                }
+            }
         );
         result.services = services;
         result.smb_info = smb;

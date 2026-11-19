@@ -1,0 +1,205 @@
+{
+  "config": {
+    "subnet": "192.0.2.0/24",
+    "threadLimit": 64,
+    "delayMs": 10
+  },
+  "progress": {
+    "total": 256,
+    "completed": 256,
+    "status": "completed"
+  },
+  "results": [
+    {
+      "ip": "192.0.2.1",
+      "reachable": true,
+      "deviceName": "Studio router",
+      "manufacturer": "Ubiquiti",
+      "osGuess": "Linux",
+      "latencyMs": 0.8,
+      "attempts": 3,
+      "macAddress": "02:40:20:00:00:01",
+      "hostnames": [
+        "device-1.studio.test"
+      ],
+      "discoverySources": [
+        "ICMP",
+        "DNS"
+      ],
+      "services": [
+        {
+          "service": "HTTPS",
+          "port": 443,
+          "protocol": "tcp",
+          "tlsCertInfo": "CN=router.studio.test; SANs=router.studio.test; Expires=2025-01-01; Issuer=Studio CA"
+        },
+        {
+          "service": "SSH",
+          "port": 22,
+          "protocol": "tcp"
+        }
+      ]
+    },
+    {
+      "ip": "192.0.2.2",
+      "reachable": true,
+      "deviceName": "Workstation",
+      "manufacturer": "Framework",
+      "osGuess": "Linux",
+      "latencyMs": 2.3,
+      "attempts": 3,
+      "macAddress": "02:40:20:00:00:02",
+      "hostnames": [
+        "device-2.studio.test"
+      ],
+      "discoverySources": [
+        "ICMP",
+        "DNS"
+      ],
+      "services": [
+        {
+          "service": "SSH",
+          "port": 22,
+          "protocol": "tcp"
+        }
+      ]
+    },
+    {
+      "ip": "192.0.2.3",
+      "reachable": true,
+      "deviceName": "Maya\u2019s MacBook",
+      "manufacturer": "Apple",
+      "osGuess": "macOS",
+      "latencyMs": 3.7,
+      "attempts": 3,
+      "macAddress": "02:40:20:00:00:03",
+      "hostnames": [
+        "device-3.studio.test"
+      ],
+      "discoverySources": [
+        "ICMP",
+        "DNS"
+      ],
+      "services": [
+        {
+          "service": "SMB",
+          "port": 445,
+          "protocol": "tcp"
+        }
+      ]
+    },
+    {
+      "ip": "192.0.2.4",
+      "reachable": true,
+      "deviceName": "Kitchen printer",
+      "manufacturer": "Brother",
+      "osGuess": "",
+      "latencyMs": 5.4,
+      "attempts": 3,
+      "macAddress": "02:40:20:00:00:04",
+      "hostnames": [
+        "device-4.studio.test"
+      ],
+      "discoverySources": [
+        "ICMP",
+        "DNS"
+      ],
+      "services": [
+        {
+          "service": "IPP",
+          "port": 631,
+          "protocol": "tcp"
+        }
+      ]
+    },
+    {
+      "ip": "192.0.2.5",
+      "reachable": true,
+      "deviceName": "Living room TV",
+      "manufacturer": "Sony",
+      "osGuess": "Android",
+      "latencyMs": 11.6,
+      "attempts": 3,
+      "macAddress": "02:40:20:00:00:05",
+      "hostnames": [
+        "device-5.studio.test"
+      ],
+      "discoverySources": [
+        "ICMP",
+        "DNS"
+      ],
+      "services": [
+        {
+          "service": "HTTP",
+          "port": 8008,
+          "protocol": "tcp"
+        }
+      ]
+    },
+    {
+      "ip": "192.0.2.6",
+      "reachable": true,
+      "deviceName": "Archive NAS",
+      "manufacturer": "Synology",
+      "osGuess": "Linux",
+      "latencyMs": 1.5,
+      "attempts": 3,
+      "macAddress": "02:40:20:00:00:06",
+      "hostnames": [
+        "device-6.studio.test"
+      ],
+      "discoverySources": [
+        "ICMP",
+        "DNS"
+      ],
+      "services": [
+        {
+          "service": "SMB",
+          "port": 445,
+          "protocol": "tcp"
+        },
+        {
+          "service": "HTTPS",
+          "port": 5001,
+          "protocol": "tcp"
+        }
+      ]
+    },
+    {
+      "ip": "192.0.2.7",
+      "reachable": true,
+      "deviceName": "Hallway sensor",
+      "manufacturer": "Espressif",
+      "osGuess": "",
+      "latencyMs": 18.1,
+      "attempts": 3,
+      "macAddress": "02:40:20:00:00:07",
+      "hostnames": [
+        "device-7.studio.test"
+      ],
+      "discoverySources": [
+        "ICMP",
+        "DNS"
+      ],
+      "services": []
+    },
+    {
+      "ip": "192.0.2.8",
+      "reachable": true,
+      "deviceName": "Maya\u2019s phone",
+      "manufacturer": "Google",
+      "osGuess": "Android",
+      "latencyMs": 9.2,
+      "attempts": 3,
+      "macAddress": "02:40:20:00:00:08",
+      "hostnames": [
+        "device-8.studio.test"
+      ],
+      "discoverySources": [
+        "ICMP",
+        "DNS"
+      ],
+      "services": []
+    }
+  ]
+}
