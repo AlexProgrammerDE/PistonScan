@@ -186,7 +186,9 @@ impl Desktop {
                                 bar.child(format!("{elapsed}s elapsed"))
                             })
                             .when_some(
-                                remaining.filter(|_| progress.status == ScanStatus::Running),
+                                remaining.filter(|_| {
+                                    progress.status == ScanStatus::Running && !self.stopping
+                                }),
                                 |bar, seconds| bar.child(format!("About {seconds}s left")),
                             )
                     }),
