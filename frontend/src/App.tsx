@@ -523,6 +523,7 @@ function App() {
 
   const withBusy = async (action: string, fn: () => Promise<void>) => {
     setBusyAction(action);
+    // oxlint-disable-next-line react-hooks-js/todo -- The compiler cannot analyze try/finally without catch.
     try {
       await fn();
     } finally {
