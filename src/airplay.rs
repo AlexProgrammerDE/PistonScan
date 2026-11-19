@@ -1,9 +1,14 @@
 use std::collections::BTreeMap;
+use std::fmt;
 use std::io::Cursor;
 
 use plist::Value;
+use serde::de::{self, DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visitor};
 
 use crate::snapshot::ServiceInfo;
+
+/// Device information dictionaries nest a few levels deep. `display` recurses once per level.
+const MAX_DEPTH: usize = 16;
 
 #[must_use]
 pub fn should_query(services: &[ServiceInfo]) -> bool {
@@ -14,6 +19,10 @@ pub fn should_query(services: &[ServiceInfo]) -> bool {
 
 #[must_use]
 pub fn parse_response(data: &[u8]) -> BTreeMap<String, String> {
+    // Check the limits first, so a hostile response cannot build a value that overflows the stack.
+    if plist::from_reader::<_, Bounded>(Cursor::new(data)).is_err() {
+        return BTreeMap::new();
+    }
     let Ok(Value::Dictionary(fields)) = Value::from_reader(Cursor::new(data)) else {
         return BTreeMap::new();
     };
@@ -24,6 +33,87 @@ pub fn parse_response(data: &[u8]) -> BTreeMap<String, String> {
             (!text.is_empty()).then_some((key, text))
         })
         .collect()
+}
+
+/// A property list that stays within `MAX_DEPTH`.
+struct Bounded;
+
+impl<'de> de::Deserialize<'de> for Bounded {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Limits { depth: 0 }.deserialize(deserializer)?;
+        Ok(Self)
+    }
+}
+
+#[derive(Clone, Copy)]
+struct Limits {
+    depth: usize,
+}
+
+impl Limits {
+    fn child<E: de::Error>(self) -> Result<Self, E> {
+        if self.depth < MAX_DEPTH {
+            Ok(Self {
+                depth: self.depth + 1,
+            })
+        } else {
+            Err(E::custom("property list nests too deeply"))
+        }
+    }
+}
+
+impl<'de> DeserializeSeed<'de> for Limits {
+    type Value = ();
+
+    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<(), D::Error> {
+        deserializer.deserialize_any(self)
+    }
+}
+
+impl<'de> Visitor<'de> for Limits {
+    type Value = ();
+
+    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("a property list value")
+    }
+
+    fn visit_bool<E>(self, _value: bool) -> Result<(), E> {
+        Ok(())
+    }
+
+    fn visit_i64<E>(self, _value: i64) -> Result<(), E> {
+        Ok(())
+    }
+
+    fn visit_u64<E>(self, _value: u64) -> Result<(), E> {
+        Ok(())
+    }
+
+    fn visit_f64<E>(self, _value: f64) -> Result<(), E> {
+        Ok(())
+    }
+
+    fn visit_str<E>(self, _value: &str) -> Result<(), E> {
+        Ok(())
+    }
+
+    fn visit_bytes<E>(self, _value: &[u8]) -> Result<(), E> {
+        Ok(())
+    }
+
+    fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<(), A::Error> {
+        let child = self.child()?;
+        while seq.next_element_seed(child)?.is_some() {}
+        Ok(())
+    }
+
+    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<(), A::Error> {
+        let child = self.child()?;
+        while map.next_key_seed(child)?.is_some() {
+            map.next_value_seed(child)?;
+        }
+        Ok(())
+    }
 }
 
 fn display(value: &Value) -> String {
@@ -121,7 +211,7 @@ pub async fn fetch(ip: std::net::Ipv4Addr) -> Option<crate::snapshot::AirPlayInf
 
 #[cfg(test)]
 mod tests {
-    use super::{display, parse_response, should_query};
+    use super::{MAX_DEPTH, display, parse_response, should_query};
     use crate::snapshot::ServiceInfo;
     use plist::{Dictionary, Value};
 
@@ -151,6 +241,33 @@ mod tests {
             fields.get("features").map(String::as_str),
             Some("123456"),
             "Format the feature bitmask"
+        );
+    }
+
+    #[test]
+    fn rejects_deeply_nested_values() {
+        let nested = |depth| {
+            format!(
+                "<plist><dict><key>a</key>{}<string>x</string>{}</dict></plist>",
+                "<array>".repeat(depth),
+                "</array>".repeat(depth)
+            )
+        };
+        assert_eq!(
+            parse_response(nested(MAX_DEPTH - 1).as_bytes())
+                .get("a")
+                .map(String::as_str),
+            Some("x"),
+            "Accept nesting up to the limit"
+        );
+        assert!(
+            parse_response(nested(MAX_DEPTH).as_bytes()).is_empty(),
+            "Reject nesting beyond the limit"
+        );
+        // A 900 KB response that overflowed the stack in `display`.
+        assert!(
+            parse_response(nested(60_000).as_bytes()).is_empty(),
+            "Reject a response that nests 60000 arrays"
         );
     }
 
