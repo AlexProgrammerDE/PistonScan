@@ -1,0 +1,39 @@
+[graph]
+all-features = true
+
+[advisories]
+unmaintained = "workspace"
+unsound = "all"
+yanked = "deny"
+ignore = [
+    { id = "RUSTSEC-2026-0543", reason = "All Chrono versions are unmaintained. Replacing Chrono requires changes to PistonScan and gpui-component." },
+]
+
+[licenses]
+confidence-threshold = 0.93
+allow = [
+    "0BSD",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "CC0-1.0",
+    "ISC",
+    "MIT",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Zlib",
+]
+exceptions = [{ crate = "libfuzzer-sys", allow = ["NCSA"] }]
+
+[licenses.private]
+ignore = true
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

@@ -20,6 +20,9 @@ pre-push:
     check-core:
       glob: "{*.rs,Cargo.toml,Cargo.lock,rust-toolchain.toml,.cargo/**,vendor/xattr/**}"
       run: cargo check --locked --no-default-features
+    cargo-deny:
+      glob: "{Cargo.toml,Cargo.lock,deny.toml,vendor/xattr/Cargo.toml}"
+      run: cargo deny --locked check
     actionlint:
       glob: "{.github/workflows/**,.github/actions/**,.github/actionlint.yaml,.github/actionlint.yml}"
       run: |

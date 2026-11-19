@@ -12,6 +12,7 @@ PistonScan uses Rust and GPUI. Keep scan logic in the library so tests can run w
 ## Build and verify
 
 Install the [platform prerequisites](README.md#platform-requirements) and Lefthook. The minimum macOS version is 10.15.7 on Intel and 11 on Apple silicon.
+Install cargo-deny 0.20.2 to run the dependency check locally and in the pre-push hook.
 
 ```sh
 lefthook install
@@ -22,6 +23,7 @@ cargo fmt --manifest-path vendor/xattr/Cargo.toml --check
 cargo clippy --locked --all-targets -- -D warnings
 cargo test --locked --all-targets
 cargo check --locked --no-default-features
+cargo deny --locked check
 cargo build --locked --release
 actionlint
 ```
