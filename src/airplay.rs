@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::collections::BTreeMap;
 use std::fmt;
 use std::io::Cursor;
@@ -9,6 +10,8 @@ use crate::snapshot::ServiceInfo;
 
 /// Device information dictionaries nest a few levels deep. `display` recurses once per level.
 const MAX_DEPTH: usize = 16;
+/// `fetch` reads at most this many bytes of a response body.
+const MAX_RESPONSE_BYTES: usize = 1_048_576;
 
 #[must_use]
 pub fn should_query(services: &[ServiceInfo]) -> bool {
@@ -35,26 +38,48 @@ pub fn parse_response(data: &[u8]) -> BTreeMap<String, String> {
         .collect()
 }
 
-/// A property list that stays within `MAX_DEPTH`.
+/// A property list that stays within `MAX_DEPTH` and does not expand beyond `MAX_RESPONSE_BYTES`.
+///
+/// A binary property list can reference one object many times, and the reader copies the object
+/// for each reference. A few hundred bytes can expand to more values than fit in memory.
 struct Bounded;
 
 impl<'de> de::Deserialize<'de> for Bounded {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        Limits { depth: 0 }.deserialize(deserializer)?;
+        let budget = Cell::new(MAX_RESPONSE_BYTES);
+        Limits {
+            depth: 0,
+            budget: &budget,
+        }
+        .deserialize(deserializer)?;
         Ok(Self)
     }
 }
 
 #[derive(Clone, Copy)]
-struct Limits {
+struct Limits<'a> {
     depth: usize,
+    /// Bytes left. Each value costs one byte, plus the length of a string or data value.
+    budget: &'a Cell<usize>,
 }
 
-impl Limits {
+impl Limits<'_> {
+    fn charge<E: de::Error>(self, length: usize) -> Result<(), E> {
+        let remaining = self
+            .budget
+            .get()
+            .checked_sub(length.saturating_add(1))
+            .ok_or_else(|| E::custom("property list expands beyond the response limit"))?;
+        self.budget.set(remaining);
+        Ok(())
+    }
+
     fn child<E: de::Error>(self) -> Result<Self, E> {
+        self.charge(0)?;
         if self.depth < MAX_DEPTH {
             Ok(Self {
                 depth: self.depth + 1,
+                budget: self.budget,
             })
         } else {
             Err(E::custom("property list nests too deeply"))
@@ -62,7 +87,7 @@ impl Limits {
     }
 }
 
-impl<'de> DeserializeSeed<'de> for Limits {
+impl<'de> DeserializeSeed<'de> for Limits<'_> {
     type Value = ();
 
     fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<(), D::Error> {
@@ -70,35 +95,35 @@ impl<'de> DeserializeSeed<'de> for Limits {
     }
 }
 
-impl<'de> Visitor<'de> for Limits {
+impl<'de> Visitor<'de> for Limits<'_> {
     type Value = ();
 
     fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str("a property list value")
     }
 
-    fn visit_bool<E>(self, _value: bool) -> Result<(), E> {
-        Ok(())
+    fn visit_bool<E: de::Error>(self, _value: bool) -> Result<(), E> {
+        self.charge(0)
     }
 
-    fn visit_i64<E>(self, _value: i64) -> Result<(), E> {
-        Ok(())
+    fn visit_i64<E: de::Error>(self, _value: i64) -> Result<(), E> {
+        self.charge(0)
     }
 
-    fn visit_u64<E>(self, _value: u64) -> Result<(), E> {
-        Ok(())
+    fn visit_u64<E: de::Error>(self, _value: u64) -> Result<(), E> {
+        self.charge(0)
     }
 
-    fn visit_f64<E>(self, _value: f64) -> Result<(), E> {
-        Ok(())
+    fn visit_f64<E: de::Error>(self, _value: f64) -> Result<(), E> {
+        self.charge(0)
     }
 
-    fn visit_str<E>(self, _value: &str) -> Result<(), E> {
-        Ok(())
+    fn visit_str<E: de::Error>(self, value: &str) -> Result<(), E> {
+        self.charge(value.len())
     }
 
-    fn visit_bytes<E>(self, _value: &[u8]) -> Result<(), E> {
-        Ok(())
+    fn visit_bytes<E: de::Error>(self, value: &[u8]) -> Result<(), E> {
+        self.charge(value.len())
     }
 
     fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<(), A::Error> {
@@ -186,7 +211,7 @@ pub async fn fetch(ip: std::net::Ipv4Addr) -> Option<crate::snapshot::AirPlayInf
         let mut complete = false;
         loop {
             match response.chunk().await {
-                Ok(Some(chunk)) if data.len() + chunk.len() <= 1_048_576 => {
+                Ok(Some(chunk)) if data.len() + chunk.len() <= MAX_RESPONSE_BYTES => {
                     data.extend_from_slice(&chunk);
                 }
                 Ok(None) => {
@@ -268,6 +293,46 @@ mod tests {
         assert!(
             parse_response(nested(60_000).as_bytes()).is_empty(),
             "Reject a response that nests 60000 arrays"
+        );
+    }
+
+    #[test]
+    fn rejects_values_that_expand_past_the_response_limit() {
+        // A binary property list whose root dictionary holds `levels` nested arrays. Each array
+        // lists the next level 8 times, so the reader expands it to 8^levels strings.
+        let shared = |levels: u8| {
+            let mut objects = vec![vec![0xd1, 1, 2], vec![0x51, b'a']];
+            for level in 0..levels {
+                let mut array = vec![0xa8];
+                array.extend([level + 3; 8]);
+                objects.push(array);
+            }
+            objects.push(vec![0x51, b'x']);
+            let mut plist = b"bplist00".to_vec();
+            let mut offsets = Vec::new();
+            for object in &objects {
+                offsets.push(u8::try_from(plist.len()).unwrap());
+                plist.extend(object);
+            }
+            let table = u64::try_from(plist.len()).unwrap();
+            plist.extend(offsets);
+            plist.extend([0, 0, 0, 0, 0, 0, 1, 1]);
+            plist.extend(u64::try_from(objects.len()).unwrap().to_be_bytes());
+            plist.extend(0_u64.to_be_bytes());
+            plist.extend(table.to_be_bytes());
+            plist
+        };
+        assert_eq!(
+            parse_response(&shared(2)).get("a").map(String::len),
+            Some(64 * 3 - 2),
+            "Expand a small shared array"
+        );
+        // 190 bytes that expand to 8^14 strings. Parsing did not finish before the limit.
+        let plist = shared(14);
+        assert_eq!(plist.len(), 190, "Fixture size");
+        assert!(
+            parse_response(&plist).is_empty(),
+            "Reject a document that expands past the limit"
         );
     }
 
