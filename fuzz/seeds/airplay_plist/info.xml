@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0">
+<dict>
+    <key>deviceid</key><string>AA:BB:CC:DD:EE:FF</string>
+    <key>model</key><string>AppleTV6,2</string>
+    <key>features</key><integer>123456</integer>
+</dict>
+</plist>

@@ -1,0 +1,72 @@
+[package]
+name = "pistonscan-fuzz"
+version = "0.0.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.pistonscan]
+path = ".."
+default-features = false
+
+# Keep the fuzz crate out of the main project's workspace.
+[workspace]
+members = []
+
+[profile.release]
+debug = 1
+
+[[bin]]
+name = "airplay_plist"
+path = "fuzz_targets/airplay_plist.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "llmnr_ptr"
+path = "fuzz_targets/llmnr_ptr.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "netbios_status"
+path = "fuzz_targets/netbios_status.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "smb_reply"
+path = "fuzz_targets/smb_reply.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "tcp_banner"
+path = "fuzz_targets/tcp_banner.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "udp_reply"
+path = "fuzz_targets/udp_reply.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "tls_cert"
+path = "fuzz_targets/tls_cert.rs"
+test = false
+doc = false
+bench = false

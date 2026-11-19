@@ -18,7 +18,7 @@ use tokio::time::timeout;
 use crate::snapshot::SmbInfo;
 
 #[derive(Clone, Copy)]
-enum Endpoint {
+pub(crate) enum Endpoint {
     Workstation,
     Server,
 }
@@ -120,10 +120,15 @@ async fn call(
     // Both level-100 operations take a null server handle and the information level.
     let request = rpc::build_request(2, endpoint.opnum(), &[0, 0, 0, 0, 100, 0, 0, 0]);
     let response = transact(client, tree, file, request).await?;
+    parse_reply(&response, endpoint)
+}
+
+/// Decodes the level-100 RPC response PDU for call ID 2.
+pub(crate) fn parse_reply(response: &[u8], endpoint: Endpoint) -> Option<SmbInfo> {
     if response.get(12..16)? != 2_u32.to_le_bytes() {
         return None;
     }
-    parse(rpc::parse_response(&response).ok()?, endpoint)
+    parse(rpc::parse_response(response).ok()?, endpoint)
 }
 
 async fn transact(

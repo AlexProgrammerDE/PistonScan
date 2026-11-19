@@ -28,7 +28,7 @@ async fn handshake(ip: Ipv4Addr, port: u16) -> Option<String> {
     summarize(&der)
 }
 
-fn summarize(der: &[u8]) -> Option<String> {
+pub(crate) fn summarize(der: &[u8]) -> Option<String> {
     let (_, cert) = x509_parser::parse_x509_certificate(der).ok()?;
     let subject = cert
         .subject()

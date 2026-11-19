@@ -36,3 +36,16 @@ actionlint
 ```
 
 If you lack GPUI system libraries, run `cargo test --locked --no-default-features --lib` and report what the linker could not find. Keep Git hooks enabled.
+
+## Fuzzing
+
+The `fuzz/` crate holds cargo-fuzz targets for the parsers that read replies from devices on the network. It is outside the main workspace and needs the pinned nightly toolchain and cargo-fuzz 0.13.2. The targets reach crate-private parsers through `src/fuzzing.rs`, which only builds with `--cfg fuzzing`.
+
+```sh
+cargo +nightly-2026-11-01 fuzz list
+cargo +nightly-2026-11-01 fuzz run airplay_plist fuzz/corpus/airplay_plist fuzz/seeds/airplay_plist -- -max_total_time=300
+cargo +nightly-2026-11-01 fuzz run airplay_plist fuzz/artifacts/airplay_plist/<crash-file>
+cargo +nightly-2026-11-01 fuzz tmin airplay_plist fuzz/artifacts/airplay_plist/<crash-file>
+```
+
+Put the first directory in `fuzz/corpus/` so new inputs do not change the committed seeds in `fuzz/seeds/`. For a real bug, fix the parser and add the minimized input to a unit test. The Fuzz workflow runs each target for 60 seconds on parser changes and for 10 minutes every week.

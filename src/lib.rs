@@ -1,4 +1,7 @@
 pub mod airplay;
+#[cfg(fuzzing)]
+#[doc(hidden)]
+pub mod fuzzing;
 pub mod insights;
 pub mod mac;
 pub mod manager;

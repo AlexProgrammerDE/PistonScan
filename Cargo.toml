@@ -108,3 +108,5 @@ trivial_numeric_casts = "warn"
 let_underscore_drop = "warn"
 unit_bindings = "warn"
 unsafe_code = "forbid"
+# `cargo fuzz` sets `--cfg fuzzing` to expose parser entry points.
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(fuzzing)"] }

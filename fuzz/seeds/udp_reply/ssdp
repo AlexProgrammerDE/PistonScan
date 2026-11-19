@@ -1,0 +1,6 @@
+HTTP/1.1 200 OK
+CACHE-CONTROL: max-age=1800
+LOCATION: http://192.0.2.1:1900/desc.xml
+SERVER: Linux/5.10 UPnP/1.0 Test/1
+ST: upnp:rootdevice
+

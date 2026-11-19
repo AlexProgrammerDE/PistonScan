@@ -184,7 +184,7 @@ async fn read_banner(client: &mut TcpStream, ip: Ipv4Addr, port: u16) -> String 
     parse_banner(&data, http)
 }
 
-fn parse_banner(data: &[u8], http: bool) -> String {
+pub(crate) fn parse_banner(data: &[u8], http: bool) -> String {
     let text = String::from_utf8_lossy(data);
     let mut lines = text.lines().map(str::trim);
     let status = lines.next().unwrap_or_default();
@@ -270,7 +270,7 @@ async fn udp_exchange(ip: Ipv4Addr, port: u16, request: &[u8], millis: u64) -> O
     (!buffer.is_empty()).then_some(buffer)
 }
 
-fn parse_ssdp(data: &[u8]) -> Option<String> {
+pub(crate) fn parse_ssdp(data: &[u8]) -> Option<String> {
     let text = std::str::from_utf8(data).ok()?;
     let mut discovered = false;
     for line in text.lines() {
@@ -287,7 +287,7 @@ fn parse_ssdp(data: &[u8]) -> Option<String> {
     discovered.then(|| "UPnP Device".to_owned())
 }
 
-fn parse_snmp(data: &[u8]) -> Option<&'static str> {
+pub(crate) fn parse_snmp(data: &[u8]) -> Option<&'static str> {
     let (0x30, message, []) = ber(data)? else {
         return None;
     };

@@ -59,7 +59,7 @@ async fn llmnr_names(ip: Ipv4Addr) -> Vec<String> {
     names.into_iter().collect()
 }
 
-fn parse_ptr(packet: &[u8]) -> Vec<String> {
+pub(crate) fn parse_ptr(packet: &[u8]) -> Vec<String> {
     use hickory_proto::op::{Message, MessageType};
     use hickory_proto::rr::RData;
 
@@ -103,7 +103,7 @@ async fn netbios_names(ip: Ipv4Addr) -> Vec<String> {
     }
 }
 
-fn parse_nbstat(packet: &[u8]) -> Vec<String> {
+pub(crate) fn parse_nbstat(packet: &[u8]) -> Vec<String> {
     if !matches!(packet, [0x82, 0x28, flags, ..] if flags & 0x80 != 0) {
         return Vec::new();
     }

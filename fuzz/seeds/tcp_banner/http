@@ -1,0 +1,4 @@
+HTTP/1.0 401 Unauthorized
+WWW-Authenticate: Basic realm="router"
+Server: example/1.0
+
