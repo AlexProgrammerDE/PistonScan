@@ -12,40 +12,23 @@ Keep each change focused. Avoid unrelated formatting and dependency updates.
 
 ## Prepare a checkout
 
-Use the Go version/toolchain from `go.mod`, Wails v2, and the Bun version in `frontend/package.json`. Install Wails platform prerequisites.
+Install the [platform prerequisites](README.md#platform-requirements), Rust through rustup, and Lefthook. Run `lefthook install` and `lefthook validate`.
 
-```bash
-bun install --cwd frontend --frozen-lockfile
-```
-
-Run the commands below from the repository root unless a command names another directory.
-On Windows, use `gradlew.bat` in place of `./gradlew` for Gradle commands.
+Run `cargo run --locked` to open the application.
 
 ## Repository layout
 
-- `internal/`: network discovery and scanner logic.
-- `app.go`, `main.go`: Wails application integration.
-- `frontend/`: React interface.
-- `PROTOCOLS.md`, `DISCOVERY_METHODS.md`: discovery reference.
+- `src/` contains the scanner, snapshot format, and desktop entry point.
+- `src/desktop/` contains the results view and file dialogs.
+- `assets/oui/` contains the MAC vendor database and its license.
 
 ## Verify your change
 
-```bash
-go test ./internal/...
-bun run --cwd frontend lint
-bun run --cwd frontend format:check
-bun run --cwd frontend build
-```
-
-Read [AGENTS.md](AGENTS.md). Use `wails doctor` to diagnose missing native dependencies. Use `wails dev` for full application development and `wails build` for a production package. Let Wails generate bindings. Keep probes cancellable and bounded. Use local fixtures or a network you control for discovery checks. Verify changed behavior on the affected operating systems.
-
-Run the relevant checks before review. State the command and result in the pull request.
-If a check cannot run, explain the missing dependency or service. Do not claim it passed.
-Keep generated artifacts consistent with their source and review their diff.
+Follow the commands in [AGENTS.md](AGENTS.md). Use offline fixtures for automated checks. Use a network you control to verify discovery on a supported operating system.
 
 ## Style and documentation
 
-Follow the existing code conventions and repository formatter. Format the frontend with Oxfmt (`bun run --cwd frontend format`). Keep commit hooks enabled.
+Follow the existing code conventions and repository formatter. Format Rust with `cargo fmt --all`. Keep commit hooks enabled.
 Add focused tests for changed logic when practical. Avoid tests that only assert source strings.
 Update documentation when commands, APIs, configuration, or expected behavior change.
 Keep examples small and reproducible. Preserve exact identifiers, commands, and error messages.

@@ -1,0 +1,26 @@
+name: Prepare Rust build
+description: Install the pinned toolchain, native build dependencies, and Cargo cache.
+inputs:
+  native:
+    description: Install Linux desktop build dependencies.
+    default: 'true'
+  cache-key:
+    description: Separate Cargo caches by build profile.
+    default: checks
+runs:
+  using: composite
+  steps:
+    - name: Install Linux dependencies
+      if: runner.os == 'Linux' && inputs.native == 'true'
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake clang libclang-dev pkg-config libasound2-dev libfontconfig1-dev libfreetype6-dev libx11-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libvulkan-dev libssl-dev
+    - name: Install pinned Rust toolchain
+      shell: bash
+      run: rustup show
+    - name: Cache Cargo build inputs
+      uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      with:
+        shared-key: ${{ inputs.cache-key }}
+        save-if: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/') }}

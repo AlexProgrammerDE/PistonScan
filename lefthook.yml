@@ -1,0 +1,43 @@
+min_version: 1.13.6
+
+pre-commit:
+  commands:
+    whitespace:
+      run: git diff --cached --check
+    rustfmt:
+      files: git diff --cached --name-only --diff-filter=ACMR
+      glob: "{*.rs,Cargo.toml,rust-toolchain.toml,rustfmt.toml,.rustfmt.toml}"
+      run: cargo fmt --all --check
+    rustfmt-xattr:
+      files: git diff --cached --name-only --diff-filter=ACMR
+      glob: "{vendor/xattr/**,rust-toolchain.toml,rustfmt.toml,.rustfmt.toml}"
+      run: cargo fmt --manifest-path vendor/xattr/Cargo.toml --check
+pre-push:
+  commands:
+    clippy:
+      glob: "{*.rs,Cargo.toml,Cargo.lock,rust-toolchain.toml,clippy.toml,.clippy.toml,.cargo/**,vendor/xattr/**}"
+      run: cargo clippy --locked --all-targets -- -D warnings
+    check-core:
+      glob: "{*.rs,Cargo.toml,Cargo.lock,rust-toolchain.toml,.cargo/**,vendor/xattr/**}"
+      run: cargo check --locked --no-default-features
+    actionlint:
+      glob: "{.github/workflows/**,.github/actions/**,.github/actionlint.yaml,.github/actionlint.yml}"
+      run: |
+        if command -v actionlint >/dev/null 2>&1; then
+          actionlint -color
+        else
+          printf '%s\n' 'actionlint is unavailable locally. CI will validate the workflows.'
+        fi
+
+commit-msg:
+  commands:
+    conventional:
+      run: |
+        subject=$(head -n 1 "{1}")
+        case "$subject" in
+          'Merge '*|'Revert "'*|'fixup! '*|'squash! '*|'amend! '*) exit 0 ;;
+        esac
+        if ! printf '%s\n' "$subject" | grep -Eq '^(feat|fix|docs|refactor|test|chore|ci|build|perf|style|revert)(\([^()[:space:]]+\))?!?: [^[:space:]]'; then
+          printf '%s\n' 'Use a Conventional Commit subject, for example: fix(server): preserve external pack activation.' >&2
+          exit 1
+        fi

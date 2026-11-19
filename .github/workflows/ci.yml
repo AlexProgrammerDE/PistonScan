@@ -1,4 +1,4 @@
-name: Wails build
+name: Rust build
 
 on:
   push:
@@ -6,60 +6,71 @@ on:
 
 permissions:
   contents: read
-
-env:
-  # Necessary for most environments as build failure can occur due to OOM issues
-  NODE_OPTIONS: "--max-old-space-size=4096"
-
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 jobs:
+  quality:
+    name: Formatting and workflow checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install pinned Rust toolchain
+        run: rustup show
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Format vendored xattr
+        run: cargo fmt --manifest-path vendor/xattr/Cargo.toml --check
+      - name: Validate workflows
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -color
   build:
+    name: Build and lint (${{ matrix.platform }})
     strategy:
-      # Failure in one platform build won't impact the others
       fail-fast: false
       matrix:
-        build:
-          - name: 'pistonscan'
-            platform:  'linux/amd64'
-            # wails-build-action does not support Ubuntu 26.04, which ubuntu-latest now uses.
-            os: 'ubuntu-24.04'
-          - name: 'pistonscan'
-            platform:  'windows/amd64'
-            os: 'windows-latest'
-          - name: 'pistonscan'
-            platform:  'darwin/universal'
-            os: 'macos-latest'
-
-    runs-on: ${{ matrix.build.os }}
+        include:
+          - os: ubuntu-24.04
+            platform: linux/amd64
+          - os: windows-latest
+            platform: windows/amd64
+          - os: macos-latest
+            platform: darwin/universal
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 50
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '10.15.7'
     steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          submodules: recursive
           persist-credentials: false
-
-      - name: Install Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version-file: frontend/package.json
-
-      - name: Lint and check frontend formatting
-        if: runner.os == 'Linux'
-        working-directory: frontend
+      - uses: ./.github/actions/setup
+      - name: Clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
+      - name: Test desktop and core
+        run: cargo test --locked --all-targets
+      - name: Check scanner without desktop dependencies
+        run: cargo check --locked --no-default-features
+      - name: Build desktop executable
+        if: runner.os != 'macOS'
+        run: cargo build --locked --release
+      - name: Build universal macOS app
+        if: runner.os == 'macOS'
         run: |
-          bun install --frozen-lockfile
-          bun run lint
-          bun run format:check
-
-      - name: Install Node.js
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 26
-
-      - name: Build wails
-        uses: dAppServer/wails-build-action@1ed9cb68d194cf664ce7603fdfa353f287fa981f # main
-        id: build
-        with:
-          build-name: ${{ matrix.build.name }}
-          build-platform: ${{ matrix.build.platform }}
-          package: false
-          go-version: '1.23'
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+          cargo build --locked --release --target x86_64-apple-darwin
+          MACOSX_DEPLOYMENT_TARGET=11.0 cargo build --locked --release --target aarch64-apple-darwin
+          mkdir -p build/bin/pistonscan.app/Contents/{MacOS,Resources}
+          mkdir -p build/bin/AppIcon.iconset
+          for size in 16 32 128 256 512; do
+            sips -z "$size" "$size" build/appicon.png --out "build/bin/AppIcon.iconset/icon_${size}x${size}.png"
+            double=$((size * 2))
+            sips -z "$double" "$double" build/appicon.png --out "build/bin/AppIcon.iconset/icon_${size}x${size}@2x.png"
+          done
+          iconutil -c icns build/bin/AppIcon.iconset -o build/bin/pistonscan.app/Contents/Resources/AppIcon.icns
+          cp build/darwin/Info.plist build/bin/pistonscan.app/Contents/Info.plist
+          lipo -create target/x86_64-apple-darwin/release/pistonscan target/aarch64-apple-darwin/release/pistonscan -output build/bin/pistonscan.app/Contents/MacOS/pistonscan
+          lipo -verify_arch x86_64 arm64 build/bin/pistonscan.app/Contents/MacOS/pistonscan
+          codesign --force --sign - build/bin/pistonscan.app

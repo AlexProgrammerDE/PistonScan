@@ -9,7 +9,7 @@ Search existing reports before opening another issue. Add new evidence to an exi
 
 ## Details that help
 
-Application commit, OS, Go/Wails versions, probe protocol, relevant permissions, and a sanitized network description.
+Application commit, OS, Rust version, probe protocol, relevant permissions, and a sanitized network description.
 
 Include the failing step, expected result, actual result, and a minimal reproduction.
 Use text for logs and commands. Use screenshots for visible problems.

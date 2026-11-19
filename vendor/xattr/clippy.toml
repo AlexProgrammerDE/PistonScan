@@ -1,0 +1,8 @@
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true
+
+disallowed-methods = [
+    { path = "std::env::set_var", reason = "Pass configuration explicitly or use Command::env for child processes" },
+    { path = "std::env::remove_var", reason = "Pass configuration explicitly or use Command::env_remove for child processes" },
+]

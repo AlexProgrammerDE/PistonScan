@@ -1,8 +1,9 @@
 {
-  "extends": ["config:base", "group:allNonMajor", ":semanticCommits", "helpers:pinGitHubActionDigests"],
-  "ignoreDeps": [
-    "net.fabricmc:intermediary",
-    "eclipse-temurin"
+  "extends": [
+    "config:recommended",
+    "group:allNonMajor",
+    ":semanticCommits",
+    "helpers:pinGitHubActionDigests"
   ],
   "packageRules": [
     {
@@ -16,8 +17,15 @@
       "automergeType": "branch"
     },
     {
-      "matchPackageNames": ["**"],
-      "allowedVersions": "!/\\-SNAPSHOT$/"
+      "matchManagers": [
+        "cargo"
+      ],
+      "matchPackageNames": [
+        "gpui",
+        "gpui-component"
+      ],
+      "groupName": "GPUI",
+      "automerge": false
     }
   ]
 }

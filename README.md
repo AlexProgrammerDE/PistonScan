@@ -1,48 +1,39 @@
 # PistonScan
 
-## About
+PistonScan is a native desktop IP scanner built with Rust and GPUI. Scan one IPv4 address or a subnet and watch results arrive as each host finishes. Filter by reachability or insight score, sort by latency or IP address, and expand a row to see how PistonScan identified the device. Import and export JSON snapshots to save or revisit a scan.
 
-PistonScan is a cross-platform network scanner built with Wails (Go + React). It provides comprehensive network discovery using multiple protocols for device detection, service fingerprinting, and security assessment.
+PistonScan starts with ICMP echo. For hosts that respond, it checks DNS, mDNS, NetBIOS, LLMNR, SMB, the neighbor cache, and common TCP and UDP services. It can also read TLS certificates and AirPlay metadata. See [the protocol reference](PROTOCOLS.md) for details.
 
-### Core Network Probes
+## Platform requirements
 
-- **ICMP Echo (Ping)** - Host reachability and latency measurement with TTL-based OS fingerprinting
-- **ARP Sweep** - MAC address resolution and manufacturer identification via OUI lookup
-- **TCP Connect Scans** - Service detection on common ports with banner grabbing
-- **UDP Port Probes** - UDP service detection (DNS, DHCP, SNMP, SSDP, etc.)
+| Platform | Requirements |
+| --- | --- |
+| macOS | macOS 10.15.7 or later on Intel with Metal. macOS 11 or later on Apple silicon. Install Xcode with the Metal toolchain to build. |
+| Windows | x64. Install the Visual Studio C++ build tools and a Windows SDK to build. |
+| Linux | x64 with an X11 or Wayland session and a working Vulkan driver. |
 
-### Service Discovery Protocols
+The scanner uses the operating system's `ping` utility on all three platforms. It also uses `arp` when the local neighbor cache does not supply a MAC address. Run the application as a regular user with permission to send ICMP echo requests.
 
-PistonScan supports multiple discovery protocols for maximum compatibility across different platforms:
+For Ubuntu 24.04, install these Linux build packages.
 
-- **DNS** - Standard DNS reverse lookups (all platforms)
-- **mDNS/Bonjour** - Zero-configuration networking (macOS, iOS, Android, Windows 10+, Linux)
-- **DNS-SD** - Service discovery with 30+ service types (cross-platform)
-- **NetBIOS (NBNS)** - Windows name resolution, also via Samba on Linux
-- **LLMNR** - Link-Local Multicast Name Resolution (Windows, some Linux)
-- **SSDP/UPnP** - Universal Plug and Play device discovery (routers, printers, IoT devices)
-- **SNMP v1/v2c** - Network device management protocol queries with common community strings
-- **TLS Certificate Inspection** - Extract certificate details from HTTPS services
+```sh
+sudo apt-get install build-essential cmake clang libclang-dev pkg-config \
+  libasound2-dev libfontconfig1-dev libfreetype6-dev libx11-dev libxcb1-dev \
+  libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libvulkan-dev libssl-dev \
+  iputils-ping net-tools
+```
 
-For detailed information about each protocol, see [PROTOCOLS.md](PROTOCOLS.md).
+## Build and run
 
-This is based on the official Wails React-TS template.
+Install Rust with rustup. Cargo uses the version in [rust-toolchain.toml](rust-toolchain.toml).
 
-You can configure the project by editing `wails.json`. More information about the project settings can be found
-here: https://wails.io/docs/reference/project-config
+```sh
+cargo run --locked
+cargo build --locked --release
+```
 
-## Live Development
-
-To run in live development mode, run `wails dev` in the project directory. This will run a Vite development
-server that will provide very fast hot reload of your frontend changes. If you want to develop in a browser
-and have access to your Go methods, there is also a dev server that runs on http://localhost:34115. Connect
-to this in your browser, and you can call your Go code from devtools.
-
-## Building
-
-To build a redistributable, production mode package, use `wails build`.
+The release executable is in `target/release`. The macOS CI job also assembles a universal `pistonscan.app` with Intel and Apple silicon binaries.
 
 ## Contributing and support
 
-Read [the contribution guide](CONTRIBUTING.md) for development and review.
-Use [the support guide](SUPPORT.md) for questions and issue routing.
+Read [the contribution guide](CONTRIBUTING.md) to set up the Git hooks and run checks. Use [the support guide](SUPPORT.md) for questions and issues.

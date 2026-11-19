@@ -1,0 +1,30 @@
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true
+
+disallowed-methods = [
+    { path = "std::env::set_var", reason = "Pass configuration explicitly or use Command::env for child processes" },
+    { path = "std::env::remove_var", reason = "Pass configuration explicitly or use Command::env_remove for child processes" },
+    { path = "std::thread::sleep", reason = "Use tokio::time::sleep on async paths" },
+    { path = "std::process::Command::output", reason = "Use tokio::process::Command on async paths, or run synchronous process management on a blocking worker" },
+    { path = "std::process::Command::status", reason = "Use tokio::process::Command on async paths, or run synchronous process management on a blocking worker" },
+    { path = "std::process::Command::spawn", reason = "Use tokio::process::Command on async paths, or run synchronous process management on a blocking worker" },
+    { path = "std::fs::read", reason = "Use tokio::fs or run synchronous filesystem work on a blocking worker" },
+    { path = "std::fs::read_to_string", reason = "Use tokio::fs or run synchronous filesystem work on a blocking worker" },
+    { path = "std::fs::write", reason = "Use tokio::fs or run synchronous filesystem work on a blocking worker" },
+    { path = "reqwest::Client::new", reason = "Use marketplace::client, which sets connect, read, and total request timeouts" },
+    { path = "reqwest::get", reason = "Use the shared marketplace::client with connect, read, and total request timeouts" },
+    { path = "std::fs::read_dir", reason = "Use tokio::fs or run synchronous filesystem work on a blocking worker" },
+    { path = "std::fs::metadata", reason = "Use tokio::fs or run synchronous filesystem work on a blocking worker" },
+    { path = "std::fs::symlink_metadata", reason = "Use tokio::fs or run synchronous filesystem work on a blocking worker" },
+    { path = "std::fs::canonicalize", reason = "Use tokio::fs or run synchronous filesystem work on a blocking worker" },
+    { path = "std::fs::rename", reason = "Use tokio::fs or run synchronous filesystem work on a blocking worker" },
+    { path = "std::fs::create_dir", reason = "Use tokio::fs or run synchronous filesystem work on a blocking worker" },
+    { path = "std::fs::create_dir_all", reason = "Use tokio::fs or run synchronous filesystem work on a blocking worker" },
+    { path = "reqwest::Client::builder", reason = "Use marketplace::client to preserve timeouts and service request policy" },
+    { path = "reqwest::blocking::Client::new", reason = "Use the shared asynchronous marketplace::client", allow-invalid = true },
+    { path = "reqwest::blocking::Client::builder", reason = "Use the shared asynchronous marketplace::client", allow-invalid = true },
+    { path = "reqwest::blocking::get", reason = "Use the shared asynchronous marketplace::client", allow-invalid = true },
+    { path = "reqwest::ClientBuilder::danger_accept_invalid_certs", reason = "Keep certificate verification enabled for service credentials and receipts" },
+    { path = "reqwest::ClientBuilder::danger_accept_invalid_hostnames", reason = "Keep hostname verification enabled for service credentials and receipts" },
+]

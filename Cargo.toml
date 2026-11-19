@@ -1,0 +1,110 @@
+[package]
+name = "pistonscan"
+version = "0.1.0"
+edition = "2024"
+description = "An actually good IP Scanner GUI"
+license = "Apache-2.0"
+publish = false
+
+[features]
+default = ["desktop"]
+desktop = ["dep:chrono", "dep:gpui", "dep:gpui-component", "dep:gpui-component-assets", "dep:serde_json"]
+
+[[bin]]
+name = "pistonscan"
+path = "src/main.rs"
+required-features = ["desktop"]
+test = false
+
+[dependencies]
+chrono = { version = "0.4", default-features = false, features = ["clock"], optional = true }
+dns-lookup = "3"
+hickory-proto = { version = "0.26", default-features = false }
+mdns-sd = "0.20"
+gpui = { version = "=0.2.2", optional = true }
+gpui-component = { version = "=0.5.1", optional = true }
+gpui-component-assets = { version = "=0.5.1", optional = true }
+plist = "1"
+native-tls = "0.2"
+tokio-native-tls = "0.3"
+x509-parser = "0.18"
+reqwest = { version = "0.13", default-features = false, features = ["native-tls-no-alpn"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", optional = true }
+smb2 = "0.43"
+thiserror = "2"
+tokio = { version = "1", features = ["macros", "net", "process", "rt-multi-thread", "sync", "time", "io-util", "fs"] }
+
+[dev-dependencies]
+serde_json = "1"
+
+[patch.crates-io]
+xattr = { path = "vendor/xattr" }
+
+[lints.clippy]
+nursery = { level = "warn", priority = -1 }
+# Noisy nursery lints.
+missing_const_for_fn = "allow"
+option_if_let_else = "allow"
+future_not_send = "allow"
+redundant_pub_crate = "allow" # Conflicts with unreachable_pub.
+suboptimal_flops = "allow"
+
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+todo = "warn"
+unimplemented = "warn"
+dbg_macro = "warn"
+disallowed_methods = "warn"
+allow_attributes = "warn"
+allow_attributes_without_reason = "warn"
+map_err_ignore = "warn"
+unused_result_ok = "warn"
+redundant_clone = "warn"
+
+# Safety and correctness
+undocumented_unsafe_blocks = "warn"
+multiple_unsafe_ops_per_block = "warn"
+string_slice = "warn"
+float_cmp_const = "warn"
+lossy_float_literal = "warn"
+mem_forget = "warn"
+exit = "warn"
+rc_buffer = "warn"
+fn_to_numeric_cast_any = "warn"
+infinite_loop = "warn"
+try_err = "warn"
+rest_pat_in_fully_bound_structs = "warn"
+iter_over_hash_type = "warn"
+let_underscore_must_use = "warn"
+significant_drop_tightening = "warn"
+
+# Better test failures
+assertions_on_result_states = "warn"
+missing_assert_message = "warn"
+
+# Public library items are internal APIs shared by the CLI and desktop.
+missing_errors_doc = "allow"
+# Keep RGB and RGBA literals in the same form as hex color codes.
+unreadable_literal = "allow"
+unnecessary_safety_comment = "warn"
+unnecessary_safety_doc = "warn"
+panic_in_result_fn = "warn"
+unreachable = "warn"
+clone_on_ref_ptr = "warn"
+wildcard_enum_match_arm = "warn"
+format_push_string = "warn"
+empty_structs_with_brackets = "warn"
+empty_enum_variants_with_brackets = "warn"
+
+[lints.rust]
+unused_qualifications = "warn"
+unused_lifetimes = "warn"
+redundant_lifetimes = "warn"
+trivial_numeric_casts = "warn"
+let_underscore_drop = "warn"
+unit_bindings = "warn"
+unsafe_code = "forbid"

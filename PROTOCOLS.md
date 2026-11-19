@@ -12,7 +12,7 @@ PistonScan now supports multiple network discovery protocols for comprehensive h
 DNS is the standard internet naming protocol. PistonScan uses standard DNS reverse lookups (PTR records) to resolve hostnames from IP addresses.
 
 **How it works:**
-- Uses the system's DNS resolver via Go's `net.Resolver`
+- Uses the system DNS resolver via `dns-lookup`
 - Reads `/etc/hosts` and system DNS configuration
 - Performs reverse DNS lookups (PTR queries)
 - Best with DHCP dynamic DNS updates
@@ -198,7 +198,7 @@ SSDP (Simple Service Discovery Protocol) is used by UPnP devices to announce the
 
 ---
 
-### 8. SNMP v1/v2c Queries
+### 8. SNMP v2c Queries
 **Status**: ✅ Newly Implemented  
 **Port**: UDP 161  
 **Compatibility**: All platforms
@@ -207,12 +207,12 @@ SNMP (Simple Network Management Protocol) provides device information when commu
 
 **How it works:**
 - Sends SNMP GET requests for sysDescr (1.3.6.1.2.1.1.1.0)
-- Tries common community strings: "public", "private"
+- Uses the public community for the read-only sysDescr request
 - Parses responses to identify SNMP-enabled devices
 - Network devices, servers, printers commonly support SNMP
 
 **Limitations:**
-- Only queries with default community strings
+- Only queries the public community
 - Does not attempt SNMP v3 (requires authentication)
 - Brief timeout to avoid delays
 - Many organizations disable SNMP or change community strings
@@ -228,7 +228,7 @@ SNMP (Simple Network Management Protocol) provides device information when commu
 - ✅ All platforms
 
 **Security Note:**
-⚠️ SNMP v1/v2c sends community strings in cleartext. SNMP v3 is more secure but requires credentials.
+⚠️ SNMP v2c sends community strings in cleartext. SNMP v3 is more secure but requires credentials.
 
 ---
 
@@ -327,18 +327,13 @@ ICMP echo requests (ping) test host reachability and measure latency.
 - Measures round-trip time (RTT)
 - Records Time To Live (TTL) values
 - Multiple attempts for accuracy
-- TTL values help guess operating system
 
 **Information Gathered:**
 - Host reachability
 - Network latency (milliseconds)
-- Packet loss
-- TTL values (OS fingerprinting)
+- TTL values when supplied by the platform ping utility
 
-**OS Fingerprinting via TTL:**
-- TTL 64: Linux/Unix/macOS
-- TTL 128: Windows
-- TTL 255: Network devices (Cisco, etc.)
+The OS estimate uses service and banner clues.
 
 **Platform Support:**
 - ✅ All platforms
@@ -371,7 +366,7 @@ Scan results now include separate fields for each protocol:
   "deviceName": "MyDevice",           // Selected from priority order
   "macAddress": "AA:BB:CC:DD:EE:FF",  // ARP
   "manufacturer": "Apple Inc.",       // OUI lookup
-  "osGuess": "Linux/Unix",            // TTL-based guess
+  "osGuess": "Linux/Unix",            // service-based estimate
   "services": [
     {
       "port": 443,
@@ -431,9 +426,9 @@ Scan results now include separate fields for each protocol:
 - ℹ️ PistonScan performs standard connects, not stealthy scans
 - ⚠️ Some organizations prohibit port scanning
 
-### SNMP v1/v2c
+### SNMP v2c
 - ⚠️ Community strings sent in cleartext
-- ⚠️ "public" and "private" are well-known defaults
+- ⚠️ "public" is a well-known default
 - ⚠️ Should use SNMP v3 for production (not implemented)
 - ℹ️ PistonScan only reads, doesn't modify SNMP values
 
@@ -544,19 +539,14 @@ All protocols are queried concurrently within a 4-second window to minimize tota
 ## Implementation Details
 
 ### Code Structure
-- **Main scan logic**: `internal/scan/manager.go`
-- **Protocol implementations**:
-  - `lookupHostnames()` - DNS
-  - `lookupMDNS()` - mDNS/DNS-SD
-  - `lookupNetBIOS()` - NetBIOS
-  - `lookupLLMNR()` - LLMNR
-- **Device name selection**: `selectDeviceName()`
-- **Tests**: `internal/scan/manager_test.go`
+- Scan scheduling and progress are in `src/manager.rs`.
+- Protocol implementations and offline parser tests are in `src/`.
+- The desktop presents results in `src/desktop/results.rs`.
 
 ### Dependencies
-- `net` - Standard Go networking (DNS)
-- `github.com/grandcat/zeroconf` - mDNS/DNS-SD
-- Custom implementations for NetBIOS and LLMNR
+- `dns-lookup` for system reverse DNS and `mdns-sd` for DNS-SD browsing.
+- `hickory-proto` for LLMNR PTR responses and `smb2` for SMB transport.
+- See `Cargo.toml` for the remaining dependencies.
 
 ## References
 

@@ -1,0 +1,1 @@
+The vendor table comes from the IEEE MA-L assignments and the display names distributed in endobit/oui v0.7.0. PistonScan stores those names in a sorted tab-separated table. See LICENSE for the upstream distribution license.
