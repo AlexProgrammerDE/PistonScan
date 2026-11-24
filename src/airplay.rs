@@ -1,10 +1,8 @@
-use std::cell::Cell;
 use std::collections::BTreeMap;
-use std::fmt;
 use std::io::Cursor;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use plist::Value;
-use serde::de::{self, DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visitor};
+use plist::{Value, stream::Event};
 
 use crate::snapshot::ServiceInfo;
 
@@ -12,6 +10,8 @@ use crate::snapshot::ServiceInfo;
 const MAX_DEPTH: usize = 16;
 /// `fetch` reads at most this many bytes of a response body.
 const MAX_RESPONSE_BYTES: usize = 1_048_576;
+const MIN_RFC3339_UNIX_SECONDS: u64 = 62_167_219_200;
+const MAX_RFC3339_UNIX_SECONDS: u64 = 253_402_300_799;
 
 #[must_use]
 pub fn should_query(services: &[ServiceInfo]) -> bool {
@@ -23,7 +23,7 @@ pub fn should_query(services: &[ServiceInfo]) -> bool {
 #[must_use]
 pub fn parse_response(data: &[u8]) -> BTreeMap<String, String> {
     // Check the limits first, so a hostile response cannot build a value that overflows the stack.
-    if plist::from_reader::<_, Bounded>(Cursor::new(data)).is_err() {
+    if !is_bounded_plist(data) {
         return BTreeMap::new();
     }
     let Ok(Value::Dictionary(fields)) = Value::from_reader(Cursor::new(data)) else {
@@ -38,107 +38,53 @@ pub fn parse_response(data: &[u8]) -> BTreeMap<String, String> {
         .collect()
 }
 
-/// A property list that stays within `MAX_DEPTH` and does not expand beyond `MAX_RESPONSE_BYTES`.
+/// Checks the decoded event stream before building a `Value` tree.
 ///
 /// A binary property list can reference one object many times, and the reader copies the object
-/// for each reference. A few hundred bytes can expand to more values than fit in memory.
-struct Bounded;
-
-impl<'de> de::Deserialize<'de> for Bounded {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let budget = Cell::new(MAX_RESPONSE_BYTES);
-        Limits {
-            depth: 0,
-            budget: &budget,
-        }
-        .deserialize(deserializer)?;
-        Ok(Self)
+/// for each reference. A few hundred bytes can therefore expand to more values than fit in memory.
+fn is_bounded_plist(data: &[u8]) -> bool {
+    let mut depth = 0_usize;
+    let mut budget = MAX_RESPONSE_BYTES;
+    for event in plist::stream::Reader::new(Cursor::new(data)) {
+        let Ok(event) = event else {
+            return false;
+        };
+        let charge = match &event {
+            Event::StartArray(_) | Event::StartDictionary(_) => {
+                if depth == MAX_DEPTH {
+                    return false;
+                }
+                depth += 1;
+                1
+            }
+            Event::EndCollection => {
+                let Some(parent_depth) = depth.checked_sub(1) else {
+                    return false;
+                };
+                depth = parent_depth;
+                0
+            }
+            Event::Data(value) => value.len().saturating_add(1),
+            Event::String(value) => value.len().saturating_add(1),
+            Event::Date(value) => {
+                let timestamp: SystemTime = (*value).into();
+                let in_range = match timestamp.duration_since(UNIX_EPOCH) {
+                    Ok(duration) => duration.as_secs() <= MAX_RFC3339_UNIX_SECONDS,
+                    Err(error) => error.duration() <= Duration::from_secs(MIN_RFC3339_UNIX_SECONDS),
+                };
+                if !in_range {
+                    return false;
+                }
+                1
+            }
+            Event::Boolean(_) | Event::Integer(_) | Event::Real(_) | Event::Uid(_) | _ => 1,
+        };
+        let Some(remaining) = budget.checked_sub(charge) else {
+            return false;
+        };
+        budget = remaining;
     }
-}
-
-#[derive(Clone, Copy)]
-struct Limits<'a> {
-    depth: usize,
-    /// Bytes left. Each value costs one byte, plus the length of a string or data value.
-    budget: &'a Cell<usize>,
-}
-
-impl Limits<'_> {
-    fn charge<E: de::Error>(self, length: usize) -> Result<(), E> {
-        let remaining = self
-            .budget
-            .get()
-            .checked_sub(length.saturating_add(1))
-            .ok_or_else(|| E::custom("property list expands beyond the response limit"))?;
-        self.budget.set(remaining);
-        Ok(())
-    }
-
-    fn child<E: de::Error>(self) -> Result<Self, E> {
-        self.charge(0)?;
-        if self.depth < MAX_DEPTH {
-            Ok(Self {
-                depth: self.depth + 1,
-                budget: self.budget,
-            })
-        } else {
-            Err(E::custom("property list nests too deeply"))
-        }
-    }
-}
-
-impl<'de> DeserializeSeed<'de> for Limits<'_> {
-    type Value = ();
-
-    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<(), D::Error> {
-        deserializer.deserialize_any(self)
-    }
-}
-
-impl<'de> Visitor<'de> for Limits<'_> {
-    type Value = ();
-
-    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("a property list value")
-    }
-
-    fn visit_bool<E: de::Error>(self, _value: bool) -> Result<(), E> {
-        self.charge(0)
-    }
-
-    fn visit_i64<E: de::Error>(self, _value: i64) -> Result<(), E> {
-        self.charge(0)
-    }
-
-    fn visit_u64<E: de::Error>(self, _value: u64) -> Result<(), E> {
-        self.charge(0)
-    }
-
-    fn visit_f64<E: de::Error>(self, _value: f64) -> Result<(), E> {
-        self.charge(0)
-    }
-
-    fn visit_str<E: de::Error>(self, value: &str) -> Result<(), E> {
-        self.charge(value.len())
-    }
-
-    fn visit_bytes<E: de::Error>(self, value: &[u8]) -> Result<(), E> {
-        self.charge(value.len())
-    }
-
-    fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<(), A::Error> {
-        let child = self.child()?;
-        while seq.next_element_seed(child)?.is_some() {}
-        Ok(())
-    }
-
-    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<(), A::Error> {
-        let child = self.child()?;
-        while map.next_key_seed(child)?.is_some() {
-            map.next_value_seed(child)?;
-        }
-        Ok(())
-    }
+    depth == 0
 }
 
 fn display(value: &Value) -> String {
@@ -191,7 +137,7 @@ fn display(value: &Value) -> String {
 )]
 pub async fn fetch(ip: std::net::Ipv4Addr) -> Option<crate::snapshot::AirPlayInfo> {
     let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_millis(1500))
+        .timeout(Duration::from_millis(1500))
         .no_proxy()
         .redirect(reqwest::redirect::Policy::none())
         .build()
@@ -236,9 +182,10 @@ pub async fn fetch(ip: std::net::Ipv4Addr) -> Option<crate::snapshot::AirPlayInf
 
 #[cfg(test)]
 mod tests {
-    use super::{MAX_DEPTH, display, parse_response, should_query};
+    use super::{MAX_DEPTH, MIN_RFC3339_UNIX_SECONDS, display, parse_response, should_query};
     use crate::snapshot::ServiceInfo;
     use plist::{Dictionary, Value};
+    use std::time::{Duration, UNIX_EPOCH};
 
     #[test]
     fn reads_airplay_dictionary() {
@@ -333,6 +280,36 @@ mod tests {
         assert!(
             parse_response(&plist).is_empty(),
             "Reject a document that expands past the limit"
+        );
+    }
+
+    #[test]
+    fn rejects_unformattable_binary_dates() {
+        let sample = include_bytes!("../fuzz/seeds/airplay_plist/date-overflow.bplist");
+        assert!(
+            parse_response(sample).is_empty(),
+            "Reject a binary plist with a date outside the RFC 3339 formatter range"
+        );
+    }
+
+    #[test]
+    fn rejects_fractional_date_before_rfc3339_lower_bound() {
+        let timestamp = UNIX_EPOCH
+            .checked_sub(Duration::from_secs(MIN_RFC3339_UNIX_SECONDS))
+            .and_then(|value| value.checked_sub(Duration::from_millis(1)))
+            .expect("The RFC 3339 lower-bound fixture fits in SystemTime");
+        let value = Value::Dictionary(Dictionary::from_iter([(
+            "date",
+            Value::Date(timestamp.into()),
+        )]));
+        let mut sample = Vec::new();
+        value
+            .to_writer_binary(&mut sample)
+            .expect("Serialize the out-of-range date fixture");
+
+        assert!(
+            parse_response(&sample).is_empty(),
+            "Reject a fractional date before the RFC 3339 lower bound"
         );
     }
 
