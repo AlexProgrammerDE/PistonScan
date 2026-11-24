@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 use std::io::Cursor;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use plist::{Value, stream::Event};
 
@@ -10,6 +10,8 @@ use crate::snapshot::ServiceInfo;
 const MAX_DEPTH: usize = 16;
 /// `fetch` reads at most this many bytes of a response body.
 const MAX_RESPONSE_BYTES: usize = 1_048_576;
+const MIN_RFC3339_UNIX_SECONDS: u64 = 62_167_219_200;
+const MAX_RFC3339_UNIX_SECONDS: u64 = 253_402_300_799;
 
 #[must_use]
 pub fn should_query(services: &[ServiceInfo]) -> bool {
@@ -41,9 +43,6 @@ pub fn parse_response(data: &[u8]) -> BTreeMap<String, String> {
 /// A binary property list can reference one object many times, and the reader copies the object
 /// for each reference. A few hundred bytes can therefore expand to more values than fit in memory.
 fn is_bounded_plist(data: &[u8]) -> bool {
-    const MIN_RFC3339_UNIX_SECONDS: u64 = 62_167_219_200;
-    const MAX_RFC3339_UNIX_SECONDS: u64 = 253_402_300_799;
-
     let mut depth = 0_usize;
     let mut budget = MAX_RESPONSE_BYTES;
     for event in plist::stream::Reader::new(Cursor::new(data)) {
@@ -71,14 +70,14 @@ fn is_bounded_plist(data: &[u8]) -> bool {
                 let timestamp: SystemTime = (*value).into();
                 let in_range = match timestamp.duration_since(UNIX_EPOCH) {
                     Ok(duration) => duration.as_secs() <= MAX_RFC3339_UNIX_SECONDS,
-                    Err(error) => error.duration().as_secs() <= MIN_RFC3339_UNIX_SECONDS,
+                    Err(error) => error.duration() <= Duration::from_secs(MIN_RFC3339_UNIX_SECONDS),
                 };
                 if !in_range {
                     return false;
                 }
                 1
             }
-            _ => 1,
+            Event::Boolean(_) | Event::Integer(_) | Event::Real(_) | Event::Uid(_) | _ => 1,
         };
         let Some(remaining) = budget.checked_sub(charge) else {
             return false;
@@ -138,7 +137,7 @@ fn display(value: &Value) -> String {
 )]
 pub async fn fetch(ip: std::net::Ipv4Addr) -> Option<crate::snapshot::AirPlayInfo> {
     let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_millis(1500))
+        .timeout(Duration::from_millis(1500))
         .no_proxy()
         .redirect(reqwest::redirect::Policy::none())
         .build()
@@ -183,9 +182,10 @@ pub async fn fetch(ip: std::net::Ipv4Addr) -> Option<crate::snapshot::AirPlayInf
 
 #[cfg(test)]
 mod tests {
-    use super::{MAX_DEPTH, display, parse_response, should_query};
+    use super::{MAX_DEPTH, MIN_RFC3339_UNIX_SECONDS, display, parse_response, should_query};
     use crate::snapshot::ServiceInfo;
     use plist::{Dictionary, Value};
+    use std::time::{Duration, UNIX_EPOCH};
 
     #[test]
     fn reads_airplay_dictionary() {
@@ -289,6 +289,27 @@ mod tests {
         assert!(
             parse_response(sample).is_empty(),
             "Reject a binary plist with a date outside the RFC 3339 formatter range"
+        );
+    }
+
+    #[test]
+    fn rejects_fractional_date_before_rfc3339_lower_bound() {
+        let timestamp = UNIX_EPOCH
+            .checked_sub(Duration::from_secs(MIN_RFC3339_UNIX_SECONDS))
+            .and_then(|value| value.checked_sub(Duration::from_millis(1)))
+            .expect("The RFC 3339 lower-bound fixture fits in SystemTime");
+        let value = Value::Dictionary(Dictionary::from_iter([(
+            "date",
+            Value::Date(timestamp.into()),
+        )]));
+        let mut sample = Vec::new();
+        value
+            .to_writer_binary(&mut sample)
+            .expect("Serialize the out-of-range date fixture");
+
+        assert!(
+            parse_response(&sample).is_empty(),
+            "Reject a fractional date before the RFC 3339 lower bound"
         );
     }
 
