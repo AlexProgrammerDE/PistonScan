@@ -73,7 +73,7 @@ jobs:
           persist-credentials: false
       - name: Install nightly toolchain
         run: rustup toolchain install nightly-2026-11-01 --profile minimal
-      - uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2.90.8
+      - uses: taiki-e/install-action@073e1fd0bc889c9aee68dbaaa927cde1b5653a83 # v2.90.11
         with:
           tool: cargo-fuzz@0.13.2
       - name: Restore corpus
